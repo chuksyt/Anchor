@@ -164,9 +164,72 @@ function load() {
   }
   if (!Array.isArray(S.urges)) S.urges = [];
 }
+
+/* === Firebase Cloud Database & Realtime Sync Engine =========== */
+let db = null, auth = null, currentUser = null;
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSy_YOUR_API_KEY_HERE",
+  authDomain: "anchor-habit-app.firebaseapp.com",
+  projectId: "anchor-habit-app",
+  storageBucket: "anchor-habit-app.appspot.com",
+  messagingSenderId: "1234567890",
+  appId: "1:1234567890:web:abcdef123456"
+};
+
+function initFirebase() {
+  if (typeof firebase !== 'undefined') {
+    try {
+      if (!firebase.apps.length && FIREBASE_CONFIG && FIREBASE_CONFIG.projectId && !FIREBASE_CONFIG.projectId.includes("YOUR_API_KEY")) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+      }
+      if (firebase.apps.length) {
+        db = firebase.firestore();
+        auth = firebase.auth();
+
+        auth.onAuthStateChanged((user) => {
+          if (user) {
+            currentUser = user;
+            syncFromCloud(user.uid);
+          } else {
+            auth.signInAnonymously().catch(() => {});
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Firebase init fallback to local storage:', e);
+    }
+  }
+}
+
+function syncFromCloud(uid) {
+  if (!db) return;
+  db.collection('users').doc(uid).get().then((doc) => {
+    if (doc.exists) {
+      const remoteState = doc.data()?.state;
+      if (remoteState && remoteState.tracks) {
+        S = { ...seed(), ...remoteState, version: 1 };
+        try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
+        renderAll();
+      }
+    } else {
+      save();
+    }
+  }).catch(() => {});
+}
+
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch { toast('Could not save — is storage full or private mode on?'); }
+
+  if (db && currentUser) {
+    try {
+      db.collection('users').doc(currentUser.uid).set({
+        state: S,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch {}
+  }
 }
 
 function logIt(msg, note = '') {
@@ -1020,6 +1083,15 @@ function checkReferral() {
   }
   S.partners[ref].visits = (S.partners[ref].visits || 0) + 1;
   save();
+
+  if (db) {
+    try {
+      db.collection('referrals').doc(ref).set({
+        visits: firebase.firestore.FieldValue.increment(1),
+        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch {}
+  }
 }
 
 /* === Greeting & Theme Renderer ============================= */
@@ -1241,6 +1313,16 @@ function unlockApp(key) {
     if (!S.partners[ref]) S.partners[ref] = { visits: 1, subs: 0 };
     S.partners[ref].subs = (S.partners[ref].subs || 0) + 1;
     save();
+
+    if (db) {
+      try {
+        db.collection('referrals').doc(ref.toLowerCase()).set({
+          subs: firebase.firestore.FieldValue.increment(1),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch {}
+    }
+
     closeSubModal();
     toast('Lifetime Access Unlocked! 🎉');
     renderAll();
@@ -1280,6 +1362,27 @@ function closeAdmin() {
 function renderAdminTable() {
   if (!S.partners) S.partners = { direct: { visits: 1, subs: 0 } };
   
+  if (db) {
+    try {
+      db.collection('referrals').onSnapshot((snapshot) => {
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const code = doc.id;
+          if (!S.partners[code]) S.partners[code] = { visits: 0, subs: 0 };
+          if (data.visits) S.partners[code].visits = data.visits;
+          if (data.subs) S.partners[code].subs = data.subs;
+        });
+        updateAdminUI();
+      }, () => updateAdminUI());
+    } catch {
+      updateAdminUI();
+    }
+  } else {
+    updateAdminUI();
+  }
+}
+
+function updateAdminUI() {
   let totalVisits = 0, totalSubs = 0;
   Object.values(S.partners).forEach((p) => {
     totalVisits += p.visits || 0;
@@ -1289,10 +1392,10 @@ function renderAdminTable() {
   const grossRev = totalSubs * 2000;
   const netProfit = grossRev * 0.5;
 
-  $('#adminTotalVisits').textContent = String(totalVisits);
-  $('#adminTotalSubs').textContent = String(totalSubs);
-  $('#adminTotalRev').textContent = `₦${grossRev.toLocaleString()}`;
-  $('#adminNetProfit').textContent = `₦${netProfit.toLocaleString()}`;
+  if ($('#adminTotalVisits')) $('#adminTotalVisits').textContent = String(totalVisits);
+  if ($('#adminTotalSubs')) $('#adminTotalSubs').textContent = String(totalSubs);
+  if ($('#adminTotalRev')) $('#adminTotalRev').textContent = `₦${grossRev.toLocaleString()}`;
+  if ($('#adminNetProfit')) $('#adminNetProfit').textContent = `₦${netProfit.toLocaleString()}`;
 
   const tbody = $('#adminPartnerTableBody');
   if (!tbody) return;
@@ -1662,6 +1765,7 @@ function registerSW() {
 
 /* -- Boot ----------------------------------------------------- */
 load();
+initFirebase();
 checkReferral();
 registerVisit();
 bind();
