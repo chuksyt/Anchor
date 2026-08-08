@@ -1564,6 +1564,20 @@ function executeDataErasure() {
     return;
   }
 
+  // Delete document in Cloud Firestore if connected
+  if (db && currentUser) {
+    try {
+      db.collection('users').doc(currentUser.uid).delete();
+    } catch (e) {}
+  }
+
+  // Sign out of Firebase Auth to unbind current Cloud UID
+  if (auth) {
+    try {
+      auth.signOut();
+    } catch (e) {}
+  }
+
   // Erase device local storage
   try {
     localStorage.clear();
@@ -1572,7 +1586,7 @@ function executeDataErasure() {
   }
 
   // Re-seed default state with onboarded = false
-  seed();
+  S = seed();
   S.user.onboarded = false;
   save();
 
