@@ -132,7 +132,8 @@ function seed() {
     },
     partners: {
       direct: { visits: 1, subs: 0 }
-    }
+    },
+    deletedPartners: []
   };
 }
 
@@ -156,6 +157,7 @@ function load() {
   if (!S.partners) {
     S.partners = { direct: { visits: S.openDays?.length || 1, subs: S.user.unlocked ? 1 : 0 } };
   }
+  if (!Array.isArray(S.deletedPartners)) S.deletedPartners = [];
   if (!S.relapses || !Array.isArray(S.relapses)) {
     S.relapses = [];
   } else {
@@ -1076,7 +1078,12 @@ function startReveal() {
 /* === Referral & Referral Tracking =========================== */
 function checkReferral() {
   const params = new URLSearchParams(window.location.search);
-  const ref = (params.get('ref') || params.get('code') || S.user.referrer || 'direct').toLowerCase().trim();
+  let ref = (params.get('ref') || params.get('code') || S.user.referrer || 'direct').toLowerCase().trim();
+  
+  if (S.deletedPartners && S.deletedPartners.includes(ref)) {
+    ref = 'direct';
+  }
+
   S.user.referrer = ref;
   if (!S.partners) S.partners = {};
   if (!S.partners[ref]) {
@@ -1085,12 +1092,22 @@ function checkReferral() {
   S.partners[ref].visits = (S.partners[ref].visits || 0) + 1;
   save();
 
-  if (db) {
+  if (db && ref !== 'direct') {
     try {
-      db.collection('referrals').doc(ref).set({
-        visits: firebase.firestore.FieldValue.increment(1),
-        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      db.collection('deleted_referrals').doc(ref).get().then((doc) => {
+        if (doc.exists && doc.data()?.disabled) {
+          if (!S.deletedPartners) S.deletedPartners = [];
+          if (!S.deletedPartners.includes(ref)) S.deletedPartners.push(ref);
+          delete S.partners[ref];
+          S.user.referrer = 'direct';
+          save();
+          return;
+        }
+        db.collection('referrals').doc(ref).set({
+          visits: firebase.firestore.FieldValue.increment(1),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }).catch(() => {});
     } catch {}
   }
 }
@@ -1360,6 +1377,43 @@ function closeAdmin() {
   document.body.style.overflow = '';
 }
 
+function deletePartner(code) {
+  const cleanCode = (code || '').toLowerCase().trim();
+  if (!cleanCode) return;
+  
+  if (cleanCode === 'direct') {
+    toast('Cannot delete default "direct" channel.');
+    return;
+  }
+
+  if (!confirm(`Delete partner code "${cleanCode.toUpperCase()}"? Analytics & payouts for this code will be permanently disabled.`)) {
+    return;
+  }
+
+  if (S.partners && S.partners[cleanCode]) {
+    delete S.partners[cleanCode];
+  }
+
+  if (!Array.isArray(S.deletedPartners)) S.deletedPartners = [];
+  if (!S.deletedPartners.includes(cleanCode)) {
+    S.deletedPartners.push(cleanCode);
+  }
+  save();
+
+  if (db) {
+    try {
+      db.collection('referrals').doc(cleanCode).delete();
+      db.collection('deleted_referrals').doc(cleanCode).set({
+        disabled: true,
+        deletedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (e) {}
+  }
+
+  toast(`Partner code "${cleanCode.toUpperCase()}" deleted.`);
+  updateAdminUI();
+}
+
 function renderAdminTable() {
   if (!S.partners) S.partners = { direct: { visits: 1, subs: 0 } };
   
@@ -1369,6 +1423,7 @@ function renderAdminTable() {
         snapshot.forEach((doc) => {
           const data = doc.data();
           const code = doc.id;
+          if (S.deletedPartners && S.deletedPartners.includes(code)) return;
           if (!S.partners[code]) S.partners[code] = { visits: 0, subs: 0 };
           if (data.visits) S.partners[code].visits = data.visits;
           if (data.subs) S.partners[code].subs = data.subs;
@@ -1385,7 +1440,8 @@ function renderAdminTable() {
 
 function updateAdminUI() {
   let totalVisits = 0, totalSubs = 0;
-  Object.values(S.partners).forEach((p) => {
+  Object.entries(S.partners).forEach(([code, p]) => {
+    if (S.deletedPartners && S.deletedPartners.includes(code)) return;
     totalVisits += p.visits || 0;
     totalSubs += p.subs || 0;
   });
@@ -1401,9 +1457,16 @@ function updateAdminUI() {
   const tbody = $('#adminPartnerTableBody');
   if (!tbody) return;
 
-  const rows = Object.entries(S.partners).map(([code, p]) => {
+  const validEntries = Object.entries(S.partners).filter(([code]) => {
+    return !S.deletedPartners || !S.deletedPartners.includes(code);
+  });
+
+  const rows = validEntries.map(([code, p]) => {
     const pRev = (p.subs || 0) * 2000;
     const pPayout = pRev * 0.5;
+    const deleteBtn = code !== 'direct'
+      ? `<button class="btn-delete-partner" data-delete-partner="${code}" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); color:#f87171; cursor:pointer; font-size:0.75rem; padding:0.25rem 0.5rem; border-radius:var(--radius); font-weight:600;" title="Delete Partner Code">🗑️ Delete</button>`
+      : `<span style="color:var(--ink-faint); font-size:0.75rem;">Default</span>`;
     return `
       <tr>
         <td><strong>${code.toUpperCase()}</strong></td>
@@ -1411,11 +1474,19 @@ function updateAdminUI() {
         <td>${p.subs || 0}</td>
         <td>₦${pRev.toLocaleString()}</td>
         <td>₦${pPayout.toLocaleString()}</td>
+        <td style="text-align:right;">${deleteBtn}</td>
       </tr>
     `;
   });
 
-  tbody.innerHTML = rows.join('') || '<tr><td colspan="5">No partner traffic logged yet.</td></tr>';
+  tbody.innerHTML = rows.join('') || '<tr><td colspan="6">No partner traffic logged yet.</td></tr>';
+
+  $$('.btn-delete-partner').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const code = e.currentTarget.dataset.deletePartner;
+      deletePartner(code);
+    });
+  });
 }
 
 function generatePasscode() {
@@ -1429,7 +1500,7 @@ function generatePasscode() {
   toast(`Passcode generated: ${code}`);
 }
 
-/* === Dedicated Partner Portal Controller ====================== */
+/* === Dedicated Partner Portal Controller ================= ===== */
 let currentPartnerCode = '';
 
 function openPartnerModal(code = '') {
@@ -1461,6 +1532,15 @@ function fetchPartnerStats(code) {
   const cleanCode = (code || '').toLowerCase().trim();
   if (!cleanCode) {
     toast('Please enter your referral code.');
+    return;
+  }
+
+  if (S.deletedPartners && S.deletedPartners.includes(cleanCode)) {
+    toast('This partner referral code has been deactivated by Admin.');
+    const promptBlock = $('#partnerCodePromptBlock');
+    const statsBlock = $('#partnerStatsBlock');
+    if (promptBlock) promptBlock.hidden = false;
+    if (statsBlock) statsBlock.hidden = true;
     return;
   }
 
