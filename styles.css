@@ -1276,6 +1276,22 @@ html[data-theme-style="gold"],
     font-size: var(--step-0);
   }
 }
+.onboarding__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-bottom: 0.2rem;
+}
+.onboarding__brand .brand__mark {
+  width: 16px;
+  height: 16px;
+}
+.onboarding__brand .brand__name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+}
 .onboarding__header {
   display: flex;
   align-items: center;
