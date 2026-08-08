@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#07080f" />
+<title>Anchor — streaks that hold</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚓</text></svg>" />
+</head>
+<body>
+
+<!-- ── Ambient layers ─────────────────────────────────────────────
+     Three stacked layers build depth: a drifting particle field,
+     soft colour blobs, and a fine noise/grain overlay.            -->
+<canvas id="field" aria-hidden="true"></canvas>
+<div class="aurora" aria-hidden="true">
+  <span class="blob blob--a"></span>
+  <span class="blob blob--b"></span>
+  <span class="blob blob--c"></span>
+</div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="shell">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="topbar cascade-flow cascade-delay-1">
+    <div class="topbar__row topbar__row--main">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <span class="brand__name">Anchor</span>
+      </div>
+      <div class="topbar__actions">
+        <span class="pill" id="pillDate">—</span>
+        <span class="pill pill--accent" id="pillVisits" title="Days you've opened this app in a row">
+          <span id="visitStreak">0</span>&nbsp;day visit streak
+        </span>
+        <button class="icon-btn" id="btnSettings" title="Personalization & Settings">⚙️</button>
+      </div>
+    </div>
+    <div class="topbar__row topbar__row--greeting" id="userGreetingContainer">
+      <span class="user-greeting" id="userGreeting"></span>
+    </div>
+  </header>
+
+  <!-- ── Hero: the three counters that matter ─────────────────── -->
+  <main>
+    <aside class="chaser-banner" id="chaserBanner" hidden role="alert">
+      <span class="chaser-banner__icon">⚠️</span>
+      <div class="chaser-banner__text">
+        <strong>Chaser Effect Warning</strong>
+        <span>You reset a counter in the last 48 hours. Your dopamine system will crave a repeat fix for the next 2 days. Stay on high alert and avoid high-risk situations.</span>
+      </div>
+      <span class="chaser-timer" id="chaserTimer">48h 00m</span>
+    </aside>
+
+    <section class="hero" id="hero">
+      <p class="hero__eyebrow cascade-flow cascade-delay-2">You are currently</p>
+      <div class="rings">
+
+        <article class="ring-card cascade-flow cascade-delay-3" data-track="porn">
+          <div class="ring-wrap">
+            <svg class="ring" viewBox="0 0 200 200" role="img" aria-labelledby="pornRingLabel">
+              <title id="pornRingLabel">Porn-free progress toward next milestone</title>
+              <circle class="ring__track" cx="100" cy="100" r="88" />
+              <circle class="ring__fill ring__fill--violet" cx="100" cy="100" r="88" />
+            </svg>
+            <div class="ring-face">
+              <span class="ring-face__num" data-count="porn">0</span>
+              <span class="ring-face__unit" data-unit="porn">days</span>
+            </div>
+          </div>
+          <h2 class="ring-card__title">Porn-free</h2>
+          <p class="ring-card__sub" data-next="porn">—</p>
+        </article>
+
+        <article class="ring-card cascade-flow cascade-delay-4" data-track="nofap">
+          <div class="ring-wrap">
+            <svg class="ring" viewBox="0 0 200 200" role="img" aria-labelledby="fapRingLabel">
+              <title id="fapRingLabel">Abstinence progress toward next milestone</title>
+              <circle class="ring__track" cx="100" cy="100" r="88" />
+              <circle class="ring__fill ring__fill--cyan" cx="100" cy="100" r="88" />
+            </svg>
+            <div class="ring-face">
+              <span class="ring-face__num" data-count="nofap">0</span>
+              <span class="ring-face__unit" data-unit="nofap">days</span>
+            </div>
+          </div>
+          <h2 class="ring-card__title">No masturbation</h2>
+          <p class="ring-card__sub" data-next="nofap">—</p>
+        </article>
+
+        <article class="ring-card cascade-flow cascade-delay-5" data-track="paidsex">
+          <div class="ring-wrap">
+            <svg class="ring" viewBox="0 0 200 200" role="img" aria-labelledby="paidSexRingLabel">
+              <title id="paidSexRingLabel">No paid sex progress toward next milestone</title>
+              <circle class="ring__track" cx="100" cy="100" r="88" />
+              <circle class="ring__fill ring__fill--emerald" cx="100" cy="100" r="88" />
+            </svg>
+            <div class="ring-face">
+              <span class="ring-face__num" data-count="paidsex">0</span>
+              <span class="ring-face__unit" data-unit="paidsex">days</span>
+            </div>
+          </div>
+          <h2 class="ring-card__title">No paid sex</h2>
+          <p class="ring-card__sub" data-next="paidsex">—</p>
+        </article>
+
+      </div>
+
+      <p class="hero__line" id="heroLine">Every clean day is a vote for who you're becoming.</p>
+
+      <div class="hero__actions cascade-flow cascade-delay-6">
+        <button class="btn btn--primary" id="btnCheckin">
+          <span class="btn__glow" aria-hidden="true"></span>
+          Check in for today
+        </button>
+        <button class="btn btn--ghost" id="btnUrge">I'm having an urge</button>
+      </div>
+    </section>
+
+    <!-- ── Daily Wisdom & Reflection Card ──────────────────── -->
+    <section class="wisdom-panel reveal cascade-flow cascade-delay-6" id="wisdomPanel">
+      <div class="wisdom__head">
+        <span class="wisdom__tag">🧠 Daily Reflection</span>
+        <button class="linkbtn" id="btnNextWisdom">Another insight</button>
+      </div>
+      <blockquote class="wisdom__quote" id="wisdomText">"Real intimacy is built on trust, respect, and mutual connection—not quick transactions."</blockquote>
+      <div class="wisdom__meta">
+        <span class="wisdom__cat" id="wisdomCat">Self-Mastery & Intimacy</span>
+      </div>
+    </section>
+
+    <!-- ── Personal Trigger Action Plan ────────────────────────── -->
+    <section class="wisdom-panel reveal cascade-flow cascade-delay-6" id="triggerPlaybookPanel" style="background: linear-gradient(135deg, rgb(99 102 241 / 0.08), rgb(168 85 247 / 0.08)); border-color: var(--stroke-hi);">
+      <div class="wisdom__head">
+        <span class="wisdom__tag" style="color:var(--violet-soft);">🎯 Personal Trigger Playbook</span>
+        <button class="linkbtn" id="btnEditPlaybookTriggers">Edit triggers</button>
+      </div>
+      <div id="triggerPlaybookContent" style="display:grid; gap:0.6rem; margin-top:0.4rem; text-align:left;">
+        <!-- Injected dynamically by JS -->
+      </div>
+    </section>
+
+    <!-- ── Today ────────────────────────────────────────────── -->
+    <section class="panel reveal" id="today">
+      <div class="panel__head">
+        <h3 id="todayTitle">Today</h3>
+        <span class="panel__note" id="checkinState">Not checked in yet</span>
+      </div>
+      <div class="today-grid">
+        <label class="check" data-check="porn">
+          <input type="checkbox" id="ckPorn" />
+          <span class="check__box" aria-hidden="true"></span>
+          <span class="check__text">
+            <strong>Stayed away from porn</strong>
+            <small>No viewing, no scrolling toward it.</small>
+          </span>
+        </label>
+        <label class="check" data-check="nofap">
+          <input type="checkbox" id="ckFap" />
+          <span class="check__box" aria-hidden="true"></span>
+          <span class="check__text">
+            <strong>Didn't masturbate</strong>
+            <small>Urges came and went. That counts.</small>
+          </span>
+        </label>
+        <label class="check" data-check="paidsex">
+          <input type="checkbox" id="ckPaidSex" />
+          <span class="check__box" aria-hidden="true"></span>
+          <span class="check__text">
+            <strong>No paid sex / hookups</strong>
+            <small>Protected your safety, values, and money.</small>
+          </span>
+        </label>
+      </div>
+      <div class="reset-row">
+        <span class="reset-row__label">Slipped up at any point? Hit reset — the counter is only worth something if it's true.</span>
+        <div class="reset-row__btns">
+          <button class="btn btn--danger-ghost" data-relapse="porn">Reset porn-free</button>
+          <button class="btn btn--danger-ghost" data-relapse="nofap">Reset abstinence</button>
+          <button class="btn btn--danger-ghost" data-relapse="paidsex">Reset paid sex</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Calendar heatmap ─────────────────────────────────── -->
+    <section class="panel reveal" id="historyPanel">
+      <div class="panel__head">
+        <h3>The last 18 weeks</h3>
+        <div class="legend">
+          <span class="legend__item"><i class="sw sw--empty"></i>none</span>
+          <span class="legend__item"><i class="sw sw--clean"></i>clean</span>
+          <span class="legend__item"><i class="sw sw--confirmed"></i>checked in</span>
+          <span class="legend__item"><i class="sw sw--relapse"></i>reset</span>
+        </div>
+      </div>
+      <div class="heatmap-scroll">
+        <div class="heatmap" id="heatmap" role="grid" aria-label="Daily history"></div>
+      </div>
+    </section>
+
+    <!-- ── Stats ────────────────────────────────────────────── -->
+    <section class="panel reveal" id="statsPanel">
+      <div class="panel__head"><h3>Records</h3></div>
+      <div class="stats">
+        <div class="stat"><span class="stat__num" id="stBestPorn">0</span><span class="stat__lbl">Best porn-free run</span></div>
+        <div class="stat"><span class="stat__num" id="stBestFap">0</span><span class="stat__lbl">Best abstinence run</span></div>
+        <div class="stat"><span class="stat__num" id="stBestVisit">0</span><span class="stat__lbl">Best visit streak</span></div>
+        <div class="stat"><span class="stat__num" id="stTotalDays">0</span><span class="stat__lbl">Total clean days logged</span></div>
+        <div class="stat"><span class="stat__num" id="stCheckins">0</span><span class="stat__lbl">Days checked in</span></div>
+        <div class="stat"><span class="stat__num" id="stUrges">0</span><span class="stat__lbl">Urges ridden out</span></div>
+        <div class="stat"><span class="stat__num" id="stResets">0</span><span class="stat__lbl">Resets so far</span></div>
+      </div>
+    </section>
+
+    <!-- ── Urge / slip pattern by hour ──────────────────────── -->
+    <section class="panel reveal" id="patternPanel">
+      <div class="panel__head">
+        <h3>When it hits</h3>
+        <button class="linkbtn" id="btnChartTable" aria-expanded="false">Show table</button>
+      </div>
+      <p class="chart__lead" id="chartLead">Nothing logged yet.</p>
+
+      <div class="chart-legend" id="chartLegend" hidden>
+        <span class="legend__item"><i class="sw sw--urge"></i>urges ridden out</span>
+        <span class="legend__item"><i class="sw sw--slip"></i>resets</span>
+      </div>
+
+      <div class="chart" id="chart" role="img" aria-labelledby="chartLead"></div>
+      <div class="chart-axis" id="chartAxis" aria-hidden="true"></div>
+
+      <table class="chart-table" id="chartTable" hidden>
+        <caption>Urges ridden out and resets, by hour of day</caption>
+        <thead><tr><th scope="col">Hour</th><th scope="col">Urges</th><th scope="col">Resets</th></tr></thead>
+        <tbody id="chartTableBody"></tbody>
+      </table>
+    </section>
+
+    <!-- ── Milestones ───────────────────────────────────────── -->
+    <section class="panel reveal" id="milestonePanel">
+      <div class="panel__head">
+        <h3>Milestones</h3>
+        <span class="panel__note">Based on your shorter streak</span>
+      </div>
+      <ol class="milestones" id="milestones"></ol>
+    </section>
+
+    <!-- ── Log ──────────────────────────────────────────────── -->
+    <section class="panel reveal" id="logPanel">
+      <div class="panel__head">
+        <h3>Log</h3>
+        <div class="panel__tools">
+          <button class="linkbtn" id="btnExport">Export</button>
+          <button class="linkbtn" id="btnImport">Import</button>
+          <button class="linkbtn linkbtn--danger" id="btnWipe">Erase all data</button>
+          <input type="file" id="fileImport" accept="application/json,.json" hidden />
+        </div>
+      </div>
+      <ul class="log" id="log"><li class="log__empty">Nothing logged yet.</li></ul>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Everything lives in this browser only. Nothing is uploaded anywhere.</p>
+    <p class="foot__dim">Built for one person: you.</p>
+  </footer>
+</div>
+
+<!-- ── Urge mode overlay ──────────────────────────────────────── -->
+<div class="urge" id="urge" hidden>
+  <div class="urge__inner">
+    <nav class="urge-tabs" id="urgeTabs" role="tablist">
+      <button class="urge-tab is-active" data-step="1" role="tab">1. Breathe</button>
+      <button class="urge-tab" data-step="2" role="tab">2. Circuit Breakers</button>
+      <button class="urge-tab" data-step="3" role="tab">3. Journal</button>
+    </nav>
+
+    <!-- Step 1: Breathe -->
+    <div class="urge-step-panel" id="urgeStep1">
+      <div class="urge__reality">
+        <p>⚡ <strong>Reality Check:</strong> Will what you are about to do cost you money, safety, or peace of mind tomorrow?</p>
+      </div>
+
+      <div class="breather" id="breather">
+        <span class="breather__ring"></span>
+        <span class="breather__core"></span>
+        <span class="breather__word" id="breathWord">Breathe</span>
+      </div>
+      <p class="urge__count">Cycle <span id="breathCycles">1</span> of 4</p>
+      <p class="urge__prompt" id="urgePrompt">The wave peaks in about ten minutes. You only have to outlast it.</p>
+    </div>
+
+    <!-- Step 2: Circuit Breakers -->
+    <div class="urge-step-panel" id="urgeStep2" hidden>
+      <div class="circuit-checklist" id="circuitChecklist">
+        <span class="circuit-checklist__title">Emergency Circuit Breakers</span>
+        <label class="circuit-check">
+          <input type="checkbox" class="cb-item" />
+          <span>Leave cash, ATM cards, & transfer apps behind before stepping out</span>
+        </label>
+        <label class="circuit-check">
+          <input type="checkbox" class="cb-item" />
+          <span>Move to a public space (cafe, park, gym) where isolation is broken</span>
+        </label>
+        <label class="circuit-check">
+          <input type="checkbox" class="cb-item" />
+          <span>Take a 2-minute cold shower or splash cold water on face</span>
+        </label>
+        <label class="circuit-check">
+          <input type="checkbox" class="cb-item" />
+          <span>Reach out to a trusted friend or accountability partner</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Step 3: Journal -->
+    <div class="urge-step-panel" id="urgeStep3" hidden>
+      <div class="urge__note-field">
+        <label for="urgeNoteInput">Urge Journal (Optional)</label>
+        <textarea id="urgeNoteInput" rows="4" placeholder="What are you feeling right now? What triggered this urge?"></textarea>
+      </div>
+    </div>
+
+    <div class="urge__actions">
+      <button class="btn btn--ghost" id="btnNextPrompt">Another thought</button>
+      <button class="btn btn--ghost" id="btnUrgeClose">Close</button>
+      <button class="btn btn--primary" id="btnUrgeDone"><span class="btn__glow"></span>I'm alright now</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirm dialog (custom, so the page never blocks) ──────── -->
+<div class="modal" id="modal" hidden>
+  <div class="modal__card" role="alertdialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h4 id="modalTitle">Are you sure?</h4>
+    <p id="modalBody">This can't be undone.</p>
+    <label class="modal__field" id="modalField" hidden>
+      <span id="modalFieldLabel">What happened?</span>
+      <textarea id="modalInput" rows="3" maxlength="280"
+                placeholder="Where were you, what time, what set it off?"></textarea>
+      <small>Optional — but this is the data that actually teaches you something.</small>
+    </label>
+    <div class="modal__actions">
+      <button class="btn btn--ghost" id="modalNo">Cancel</button>
+      <button class="btn btn--danger" id="modalYes">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ── Floating mobile quick action bar ──────── -->
+<div class="float-bar" id="floatBar">
+  <button class="btn btn--primary" id="btnFloatUrge">
+    <span class="btn__glow"></span>I'm having an urge
+  </button>
+</div>
+
+<!-- ── Custom floating tooltip for heatmap ──────── -->
+<div class="cell-tooltip" id="cellTooltip" aria-hidden="true"></div>
+
+<!-- ── 4-Step Personalized Onboarding Overlay ────────────────────── -->
+<div class="onboarding" id="onboarding" hidden>
+  <div class="onboarding__card">
+    <div class="onboarding__header">
+      <h3 class="onboarding__title" style="margin:0;">Personalization & Setup</h3>
+    </div>
+    <div class="onboarding__progress">
+      <div class="onboarding__progress-fill" id="onboardingProgress" style="width: 25%;"></div>
+    </div>
+
+    <!-- Step 1: Profile & Appearance -->
+    <div class="onboarding-step" id="obStep1">
+      <p class="onboarding__desc">Let's set up your private, personalized space.</p>
+      <div style="margin-top: 1rem;">
+        <label style="display:block; font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.4rem; font-weight:600;">What should we call you?</label>
+        <input type="text" id="obName" class="input-field" placeholder="Enter your name or alias (e.g. David, Jessica)" />
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <label style="display:block; font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.4rem; font-weight:600;">Appearance & Theme:</label>
+        <div class="onboarding-options">
+          <button class="onboarding-option is-selected" data-theme-mode="dark">
+            <span class="onboarding-option__icon">🌙</span>
+            <div>
+              <span class="onboarding-option__label">Dark Mode</span>
+            </div>
+          </button>
+          <button class="onboarding-option" data-theme-mode="light">
+            <span class="onboarding-option__icon">☀️</span>
+            <div>
+              <span class="onboarding-option__label">Light Mode</span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div style="margin-top: 1.5rem; text-align: right;">
+        <button class="btn btn--primary" id="btnObNext1"><span class="btn__glow"></span>Continue ➔</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Personalized Track Experience -->
+    <div class="onboarding-step" id="obStep2" hidden>
+      <h3 class="onboarding__title">Choose Your Path</h3>
+      <p class="onboarding__desc">Select the track tailored to your recovery journey:</p>
+      <div style="margin-top: 1rem;">
+        <div class="onboarding-options">
+          <button class="onboarding-option is-selected" data-gender="him">
+            <span class="onboarding-option__icon">♂️</span>
+            <div>
+              <span class="onboarding-option__label">For Him</span>
+              <span class="onboarding-option__sub">PMO recovery & urge discipline</span>
+            </div>
+          </button>
+          <button class="onboarding-option" data-gender="her">
+            <span class="onboarding-option__icon">♀️</span>
+            <div>
+              <span class="onboarding-option__label">For Her</span>
+              <span class="onboarding-option__sub">Rose Gold & Amethyst, erotica-free & self-care</span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div style="margin-top: 1.5rem; display: flex; justify-content: space-between;">
+        <button class="btn btn--ghost" id="btnObBack2">Back</button>
+        <button class="btn btn--primary" id="btnObNext2"><span class="btn__glow"></span>Continue ➔</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Track Boundaries -->
+    <div class="onboarding-step" id="obStep3" hidden>
+      <h3 class="onboarding__title">Set Your Core Boundaries</h3>
+      <p class="onboarding__desc">Select the areas you want to track and anchor clean streaks in:</p>
+      <div class="circuit-checklist" style="margin-top: 1rem;">
+        <label class="circuit-check is-checked">
+          <input type="checkbox" id="obCkPorn" checked />
+          <span>Pornography & Explicit Videos</span>
+        </label>
+        <label class="circuit-check is-checked">
+          <input type="checkbox" id="obCkFap" checked />
+          <span>Compulsive Masturbation / Solo Coping</span>
+        </label>
+        <label class="circuit-check is-checked">
+          <input type="checkbox" id="obCkPaidSex" checked />
+          <span>Paid Sex, Escorts & Validation Hookups</span>
+        </label>
+      </div>
+      <div style="margin-top: 1.5rem; display: flex; justify-content: space-between;">
+        <button class="btn btn--ghost" id="btnObBack3">Back</button>
+        <button class="btn btn--primary" id="btnObNext3"><span class="btn__glow"></span>Continue ➔</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Primary Triggers -->
+    <div class="onboarding-step" id="obStep4" hidden>
+      <h3 class="onboarding__title">Your Urge Triggers</h3>
+      <p class="onboarding__desc">Select the situations when urges hit you the hardest:</p>
+
+      <div style="margin-top: 1rem;">
+        <div class="onboarding-options" style="grid-template-columns: 1fr 1fr;">
+          <button class="onboarding-option is-selected" data-trigger="night">
+            <span class="onboarding-option__icon">🌙</span>
+            <div>
+              <span class="onboarding-option__label">Late night in bed</span>
+            </div>
+          </button>
+          <button class="onboarding-option" data-trigger="stress">
+            <span class="onboarding-option__icon">😔</span>
+            <div>
+              <span class="onboarding-option__label">Stress / Anxiety</span>
+            </div>
+          </button>
+          <button class="onboarding-option" data-trigger="boredom">
+            <span class="onboarding-option__icon">🛋️</span>
+            <div>
+              <span class="onboarding-option__label">Boredom & Idle time</span>
+            </div>
+          </button>
+          <button class="onboarding-option" data-trigger="social">
+            <span class="onboarding-option__icon">📱</span>
+            <div>
+              <span class="onboarding-option__label">Social media & feeds</span>
+            </div>
+          </button>
+          <button class="onboarding-option" data-trigger="fatigue">
+            <span class="onboarding-option__icon">🍾</span>
+            <div>
+              <span class="onboarding-option__label">Alcohol / Fatigue</span>
+            </div>
+          </button>
+          <button class="onboarding-option" data-trigger="lonely">
+            <span class="onboarding-option__icon">💔</span>
+            <div>
+              <span class="onboarding-option__label">Loneliness & Pain</span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div style="margin-top: 1.5rem; display: flex; justify-content: space-between;">
+        <button class="btn btn--ghost" id="btnObBack4">Back</button>
+        <button class="btn btn--primary" id="btnObNext4"><span class="btn__glow"></span>Continue ➔</button>
+      </div>
+    </div>
+
+    <!-- Step 5: Launch -->
+    <div class="onboarding-step" id="obStep5" hidden>
+      <h3 class="onboarding__title">Ready to Anchor Your Journey</h3>
+      <p class="onboarding__desc">Your personal space is configured. Let's make today count.</p>
+      <div style="margin-top: 1.5rem; display: flex; gap: 0.8rem;">
+        <button class="btn btn--ghost" id="btnObBack5">Back</button>
+        <button class="btn btn--primary" id="btnObFinish" style="flex: 1; padding: 0.85rem;"><span class="btn__glow"></span>Save & Launch Anchor Dashboard</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Dedicated Settings Modal ───────────────────────────────────── -->
+<div class="onboarding" id="settingsModal" hidden>
+  <div class="onboarding__card settings-card">
+    <div class="onboarding__header">
+      <h3 class="onboarding__title" style="margin:0;">Settings & Preferences</h3>
+      <button class="onboarding__close" id="btnSettingsClose" title="Close Settings">✕</button>
+    </div>
+
+    <!-- Appearance / Theme -->
+    <div style="margin-top: 0.8rem;">
+      <label style="display:block; font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.4rem; font-weight:600;">Theme Appearance:</label>
+      <div class="onboarding-options">
+        <button class="onboarding-option is-selected" data-set-theme="dark">
+          <span class="onboarding-option__icon">🌙</span>
+          <div>
+            <span class="onboarding-option__label">Dark Mode</span>
+          </div>
+        </button>
+        <button class="onboarding-option" data-set-theme="light">
+          <span class="onboarding-option__icon">☀️</span>
+          <div>
+            <span class="onboarding-option__label">Light Mode</span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Urge Triggers -->
+    <div style="margin-top: 1rem;">
+      <label style="display:block; font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.4rem; font-weight:600;">Primary Urge Trigger:</label>
+      <div class="onboarding-options" style="grid-template-columns: 1fr 1fr;">
+        <button class="onboarding-option is-selected" data-set-trigger="night">
+          <span class="onboarding-option__icon">🌙</span>
+          <div><span class="onboarding-option__label">Late night in bed</span></div>
+        </button>
+        <button class="onboarding-option" data-set-trigger="stress">
+          <span class="onboarding-option__icon">😔</span>
+          <div><span class="onboarding-option__label">Stress / Anxiety</span></div>
+        </button>
+        <button class="onboarding-option" data-set-trigger="boredom">
+          <span class="onboarding-option__icon">🛋️</span>
+          <div><span class="onboarding-option__label">Boredom & Idle time</span></div>
+        </button>
+        <button class="onboarding-option" data-set-trigger="social">
+          <span class="onboarding-option__icon">📱</span>
+          <div><span class="onboarding-option__label">Social media & feeds</span></div>
+        </button>
+        <button class="onboarding-option" data-set-trigger="fatigue">
+          <span class="onboarding-option__icon">🍾</span>
+          <div><span class="onboarding-option__label">Alcohol / Fatigue</span></div>
+        </button>
+        <button class="onboarding-option" data-set-trigger="lonely">
+          <span class="onboarding-option__icon">💔</span>
+          <div><span class="onboarding-option__label">Loneliness & Pain</span></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Save, Tour & Reset Buttons -->
+    <div style="margin-top: 1.5rem; display:grid; gap:0.6rem;">
+      <button class="btn btn--primary" id="btnSaveSettings" style="width:100%;"><span class="btn__glow"></span>Save Preferences</button>
+      <button class="btn btn--ghost" id="btnReplayTour" style="width:100%;">Replay Feature Guide</button>
+      <button class="btn btn--ghost" id="btnOpenResetData" style="width:100%; color:#f87171; border-color:rgba(244,63,94,0.3);">Erase All Data & Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Security Data Reset Modal ──────────────────────────────────── -->
+<div class="modal" id="resetDataModal" hidden>
+  <div class="modal__card" style="border-color: rgba(244, 63, 94, 0.4); max-width: 440px;" role="dialog" aria-modal="true">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h4 style="color:#f87171; margin:0; font-size:var(--step-0);">⚠️ Confirm Data Erasure</h4>
+      <button class="onboarding__close" id="btnResetDataClose" title="Cancel">✕</button>
+    </div>
+
+    <p style="color:var(--ink-dim); font-size:var(--step--1); line-height:1.45; margin-top:0.4rem;">
+      This action is permanent and irreversible. All your clean streak counters, daily check-in history, badges, and settings will be wiped clean.
+    </p>
+
+    <div style="margin-top: 0.6rem; text-align: left;">
+      <label style="display:block; font-size:0.8rem; font-weight:600; color:var(--ink); margin-bottom:0.4rem;">
+        To confirm deletion, type <span style="color:#f87171; font-family:var(--mono);">"delete my data"</span> below:
+      </label>
+      <input type="text" id="resetDataPhraseInput" class="input-field" placeholder='type "delete my data"' style="border-color: rgba(244,63,94,0.3);" />
+    </div>
+
+    <div style="display:flex; gap:0.6rem; margin-top: 1rem; justify-content: flex-end;">
+      <button class="btn btn--ghost" id="btnCancelResetData">Cancel</button>
+      <button class="btn" id="btnConfirmResetData" disabled style="background:#e11d48; color:#ffffff; opacity:0.4; cursor:not-allowed; border:none; padding:0.6rem 1rem; font-weight:600; border-radius:var(--radius);">
+        Erase All Data Permanently
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Interactive Dashboard Tour Modal ──────────────────────────── -->
+<div class="onboarding" id="tourModal" hidden>
+  <div class="onboarding__card tour-card">
+    <div class="onboarding__header">
+      <h3 class="onboarding__title" style="margin:0;">Anchor Feature Guide 🎓</h3>
+      <button class="onboarding__close" id="btnTourClose" title="Skip Tour">✕</button>
+    </div>
+    <div class="onboarding__progress">
+      <div class="onboarding__progress-fill" id="tourProgress" style="width: 25%;"></div>
+    </div>
+
+    <!-- Step 1: Your 3 Recovery Rings & Track Definitions -->
+    <div class="onboarding-step" id="tourStep1">
+      <h4 style="color:var(--cyan-soft); font-size:var(--step-0); margin-bottom:0.4rem;">Step 1: Your 3 Recovery Rings</h4>
+      <p style="font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.8rem;">Every ring counts your clean days in a specific area. Here is what your 3 tracks mean:</p>
+      
+      <div id="tourTrackDefinitions" style="display:grid; gap:0.6rem; font-size:0.82rem; text-align:left;">
+        <!-- Injected dynamically by JS based on user gender -->
+      </div>
+    </div>
+
+    <!-- Step 2: Daily Check-Ins -->
+    <div class="onboarding-step" id="tourStep2" hidden>
+      <h4 style="color:var(--cyan-soft); font-size:var(--step-0); margin-bottom:0.4rem;">Step 2: Daily Check-Ins</h4>
+      <p style="font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.6rem;">At the end of each day (after 8pm), click <strong>"Close out today"</strong> to claim your clean day.</p>
+      <p style="font-size:0.82rem; color:var(--ink-faint);">If you ever slip up, click <em>Reset Counter</em> honestly. Your best streak record is saved forever!</p>
+    </div>
+
+    <!-- Step 3: Urge Mode (Emergency Button) -->
+    <div class="onboarding-step" id="tourStep3" hidden>
+      <h4 style="color:var(--cyan-soft); font-size:var(--step-0); margin-bottom:0.4rem;">Step 3: Urge Mode (Emergency Support)</h4>
+      <p style="font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.6rem;">When a high-risk craving hits, tap the floating <strong>"I'm having an urge"</strong> button.</p>
+      <p style="font-size:0.82rem; color:var(--ink-faint);">It launches a 3-step grounding protocol: 1. Paced Breathing ➔ 2. Circuit Breakers ➔ 3. Reflection Journaling to ride out the dopamine wave.</p>
+    </div>
+
+    <!-- Step 4: Daily Reflection & Heatmap -->
+    <div class="onboarding-step" id="tourStep4" hidden>
+      <h4 style="color:var(--cyan-soft); font-size:var(--step-0); margin-bottom:0.4rem;">Step 4: Daily Reflection & 18-Week Heatmap</h4>
+      <p style="font-size:var(--step--1); color:var(--ink-dim); margin-bottom:0.6rem;">Read your daily quote insight and watch your 18-week history fill up with clean green checkmarks!</p>
+      <p style="font-size:0.82rem; color:var(--ink-faint);">Consistency over perfection. Every clean day anchors your future.</p>
+    </div>
+
+    <!-- Navigation Buttons -->
+    <div style="margin-top: 1.2rem; display: flex; justify-content: space-between; align-items: center;">
+      <button class="btn btn--ghost" id="btnTourBack">Back</button>
+      <button class="btn btn--primary" id="btnTourNext"><span class="btn__glow"></span>Next ➔</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Subscription Lock Modal ────────────────────────────────────── -->
+<div class="modal" id="subModal" hidden>
+  <div class="modal__card sub-lock-card" role="alertdialog" aria-modal="true">
+    <span class="lock-badge">🔒 2-Day Trial Ended — Full Access Locked</span>
+    <h3>Unlock Full Anchor Access</h3>
+    <p>Your 2-day trial has completed! Unlock unlimited streak tracking, Urge Mode, relapse notes, and milestone rewards.</p>
+    <div>
+      <div class="price-pill">₦2,000 <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span></div>
+      <p class="price-sub">Unlock Unlimited Tracking & Full Access</p>
+    </div>
+    <div style="display:grid; gap:0.6rem; text-align:left;">
+      <a id="btnPayWhatsApp" href="https://wa.me/2348021184502?text=Hello!%20I%20want%20to%20get%20my%20Anchor%20Monthly%20Passcode%20(₦2,000)" target="_blank" rel="noopener" class="btn btn--primary" style="text-align:center; justify-content:center; text-decoration:none;">
+        <span class="btn__glow"></span>Get Passcode via WhatsApp (₦2,000)
+      </a>
+      <div style="display:flex; gap:0.5rem; margin-top:0.4rem;">
+        <input type="text" id="subKeyInput" class="input-field" placeholder="Enter 6-digit Passcode" style="text-transform:uppercase;" />
+        <button class="btn btn--ghost" id="btnSubUnlock">Submit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Secret Admin Panel ─────────────────────────────────────────── -->
+<div class="modal" id="adminModal" hidden>
+  <div class="modal__card admin-card" role="dialog" aria-modal="true">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h4>📊 Anchor Partner Admin Panel</h4>
+      <button class="btn btn--ghost" id="btnAdminClose">✕</button>
+    </div>
+    <div class="admin-stats-grid">
+      <div class="admin-stat-card">
+        <div class="admin-stat-card__val" id="adminTotalVisits">0</div>
+        <div class="admin-stat-card__lbl">Total Visits</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-card__val" id="adminTotalSubs">0</div>
+        <div class="admin-stat-card__lbl">Active Subs</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-card__val" id="adminTotalRev">₦0</div>
+        <div class="admin-stat-card__lbl">Gross Rev</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-card__val" id="adminNetProfit">₦0</div>
+        <div class="admin-stat-card__lbl">Your 50% Profit</div>
+      </div>
+    </div>
+
+    <div style="margin-top:0.5rem;">
+      <h5 style="color:var(--ink-dim); margin-bottom:0.5rem;">Partner Referral Breakdowns</h5>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Partner Code</th>
+              <th>Visits</th>
+              <th>Active Subs</th>
+              <th>Gross Rev</th>
+              <th>Partner Payout (50%)</th>
+            </tr>
+          </thead>
+          <tbody id="adminPartnerTableBody">
+            <tr><td colspan="5">No partner traffic logged yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="margin-top:0.5rem; background:var(--glass); padding:0.8rem; border-radius:var(--radius); border:1px solid var(--stroke);">
+      <h5 style="color:var(--ink-soft); margin-bottom:0.3rem;">Passcode Generator</h5>
+      <div style="display:flex; gap:0.5rem;">
+        <input type="text" id="adminGenKey" class="input-field" readonly placeholder="Generated Code" />
+        <button class="btn btn--primary" id="btnGenPasscode">Generate Passcode</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
