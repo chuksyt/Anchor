@@ -1661,11 +1661,7 @@ function bind() {
     e.target.value = '';           // allow re-picking the same file
   });
 
-  $('#btnWipe').addEventListener('click', () => confirmDialog(
-    'Erase everything?',
-    'All streaks, history and records are deleted permanently from this browser.',
-    'Erase it all', wipe
-  ));
+  $('#btnWipe').addEventListener('click', openResetDataModal);
 
   $('#modalYes').addEventListener('click', () => {
     const cb = onConfirm;
