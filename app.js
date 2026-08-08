@@ -169,12 +169,13 @@ function load() {
 let db = null, auth = null, currentUser = null;
 
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSy_YOUR_API_KEY_HERE",
-  authDomain: "anchor-habit-app.firebaseapp.com",
-  projectId: "anchor-habit-app",
-  storageBucket: "anchor-habit-app.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: "AIzaSyD-0T6byubzr4un2DG6uRk2SdnZ_d4zFCA",
+  authDomain: "anchor-c0d11.firebaseapp.com",
+  projectId: "anchor-c0d11",
+  storageBucket: "anchor-c0d11.firebasestorage.app",
+  messagingSenderId: "353466821039",
+  appId: "1:353466821039:web:a05ac44b47e0d6ef5b675a",
+  measurementId: "G-S9E978L2X3"
 };
 
 function initFirebase() {
