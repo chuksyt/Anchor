@@ -801,6 +801,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   animation: fade-in 0.25s var(--ease);
   overflow-y: auto;
 }
+#resetDataModal, #dialogModal {
+  z-index: 120;
+}
 .modal[hidden] { display: none; }
 .modal__card {
   width: min(420px, 100%);
@@ -819,7 +822,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .modal__actions { display: flex; gap: var(--space-xs); justify-content: flex-end; margin-top: 0.4rem; }
 
 .toast {
-  position: fixed; left: 50%; bottom: var(--space-m); z-index: 70;
+  position: fixed; left: 50%; bottom: var(--space-m); z-index: 150;
   transform: translate(-50%, 140%);
   padding: 0.7em 1.4em;
   font-size: var(--step--1);
