@@ -1429,6 +1429,73 @@ function generatePasscode() {
   toast(`Passcode generated: ${code}`);
 }
 
+/* === Dedicated Partner Portal Controller ====================== */
+let currentPartnerCode = '';
+
+function openPartnerModal(code = '') {
+  const modal = $('#partnerModal');
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  const cleanCode = (code || '').toLowerCase().trim();
+  if (cleanCode) {
+    const input = $('#partnerCodeInput');
+    if (input) input.value = cleanCode;
+    fetchPartnerStats(cleanCode);
+  } else {
+    const promptBlock = $('#partnerCodePromptBlock');
+    const statsBlock = $('#partnerStatsBlock');
+    if (promptBlock) promptBlock.hidden = false;
+    if (statsBlock) statsBlock.hidden = true;
+  }
+}
+
+function closePartnerModal() {
+  const modal = $('#partnerModal');
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function fetchPartnerStats(code) {
+  const cleanCode = (code || '').toLowerCase().trim();
+  if (!cleanCode) {
+    toast('Please enter your referral code.');
+    return;
+  }
+
+  currentPartnerCode = cleanCode;
+  const activeCodeEl = $('#partnerActiveCode');
+  if (activeCodeEl) activeCodeEl.textContent = cleanCode.toUpperCase();
+  const shareUrl = `${window.location.origin}${window.location.pathname}?ref=${cleanCode}`;
+  const shareUrlInput = $('#partnerShareUrl');
+  if (shareUrlInput) shareUrlInput.value = shareUrl;
+
+  const renderStats = (visits, subs) => {
+    if ($('#partnerVisits')) $('#partnerVisits').textContent = String(visits || 0);
+    if ($('#partnerSubs')) $('#partnerSubs').textContent = String(subs || 0);
+    const payout = (subs || 0) * 1000; // 50% of ₦2,000
+    if ($('#partnerPayout')) $('#partnerPayout').textContent = `₦${payout.toLocaleString()}`;
+    if ($('#partnerCodePromptBlock')) $('#partnerCodePromptBlock').hidden = true;
+    if ($('#partnerStatsBlock')) $('#partnerStatsBlock').hidden = false;
+  };
+
+  const localVisits = S.partners?.[cleanCode]?.visits || 0;
+  const localSubs = S.partners?.[cleanCode]?.subs || 0;
+  renderStats(localVisits, localSubs);
+
+  if (db) {
+    try {
+      db.collection('referrals').doc(cleanCode).onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          renderStats(data.visits || 0, data.subs || 0);
+        }
+      }, () => {});
+    } catch {}
+  }
+}
+
 /* === Dedicated Settings Controller ========================== */
 function openSettings() {
   const modal = $('#settingsModal');
@@ -1625,6 +1692,23 @@ function bind() {
   $('#btnAdminClose')?.addEventListener('click', closeAdmin);
   $('#btnGenPasscode')?.addEventListener('click', generatePasscode);
 
+  // Partner Modal
+  $('#btnPartnerClose')?.addEventListener('click', closePartnerModal);
+  $('#btnCheckPartnerStats')?.addEventListener('click', () => {
+    const input = $('#partnerCodeInput');
+    if (input) fetchPartnerStats(input.value);
+  });
+  $('#btnCopyPartnerUrl')?.addEventListener('click', () => {
+    const input = $('#partnerShareUrl');
+    if (input && input.value) {
+      navigator.clipboard.writeText(input.value).then(() => toast('Partner link copied! 📋')).catch(() => {
+        input.select();
+        document.execCommand('copy');
+        toast('Partner link copied! 📋');
+      });
+    }
+  });
+
   $('#btnCheckin').addEventListener('click', doCheckin);
   $('#btnUrge').addEventListener('click', openUrge);
   $('#btnUrgeDone').addEventListener('click', () => closeUrge(true));
@@ -1778,6 +1862,13 @@ if (!S.user.onboarded) {
 
 if (window.location.hash === '#admin') {
   openAdmin();
+}
+
+if (window.location.hash.startsWith('#partner')) {
+  const hash = window.location.hash;
+  const match = hash.match(/code=([^&]+)/) || hash.match(/ref=([^&]+)/);
+  const code = match ? match[1] : '';
+  openPartnerModal(code);
 }
 
 })();

@@ -747,6 +747,57 @@
   </div>
 </div>
 
+<!-- ── Dedicated Partner Portal Modal ──────────────────────────────── -->
+<div class="modal" id="partnerModal" hidden style="z-index: 110;">
+  <div class="modal__card" style="max-width: 480px;" role="dialog" aria-modal="true">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h4 style="margin:0; color:var(--cyan-soft);">🤝 Anchor Partner Portal</h4>
+      <button class="onboarding__close" id="btnPartnerClose" title="Close">✕</button>
+    </div>
+
+    <div id="partnerCodePromptBlock">
+      <p style="font-size:var(--step--1); color:var(--ink-dim); margin-top:0.4rem;">
+        Enter your Partner Referral Code below to view your real-time earnings:
+      </p>
+      <div style="display:flex; gap:0.5rem; margin-top:0.6rem;">
+        <input type="text" id="partnerCodeInput" class="input-field" placeholder="Enter referral code (e.g. brohq)" style="text-transform:lowercase;" />
+        <button class="btn btn--primary" id="btnCheckPartnerStats">View Stats</button>
+      </div>
+    </div>
+
+    <div id="partnerStatsBlock" hidden style="margin-top:0.8rem; display:grid; gap:0.8rem;">
+      <div style="background:var(--glass); padding:0.8rem; border-radius:var(--radius); border:1px solid var(--stroke);">
+        <span style="font-size:0.75rem; color:var(--ink-faint); text-transform:uppercase;">Your Active Referral Code:</span>
+        <div style="font-size:1.2rem; font-weight:700; color:var(--cyan-soft);" id="partnerActiveCode">BROHQ</div>
+      </div>
+
+      <div class="admin-stats-grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="admin-stat-card">
+          <div class="admin-stat-card__val" id="partnerVisits">0</div>
+          <div class="admin-stat-card__lbl">Link Visits</div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-card__val" id="partnerSubs">0</div>
+          <div class="admin-stat-card__lbl">Active Subscribers</div>
+        </div>
+      </div>
+
+      <div style="background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); padding:0.9rem; border-radius:var(--radius); text-align:center;">
+        <div style="font-size:0.75rem; color:var(--ink-dim); text-transform:uppercase; font-weight:600;">Your 50% Commission Payout</div>
+        <div style="font-size:1.6rem; font-weight:800; color:#10b981; margin-top:0.2rem;" id="partnerPayout">₦0</div>
+      </div>
+
+      <div style="background:var(--glass); padding:0.8rem; border-radius:var(--radius); border:1px solid var(--stroke);">
+        <label style="display:block; font-size:0.75rem; color:var(--ink-faint); text-transform:uppercase; margin-bottom:0.3rem;">Your Shareable Partner Link:</label>
+        <div style="display:flex; gap:0.4rem;">
+          <input type="text" id="partnerShareUrl" class="input-field" readonly style="font-size:0.8rem;" />
+          <button class="btn btn--ghost" id="btnCopyPartnerUrl" style="padding:0.4rem 0.8rem;">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
