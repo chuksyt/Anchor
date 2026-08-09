@@ -11,6 +11,13 @@
 const KEY = 'anchor.state.v1';
 const TRACKS = ['porn', 'nofap', 'paidsex'];
 const LABEL = { porn: 'Porn-free', nofap: 'No masturbation', paidsex: 'No paid sex' };
+
+function getActiveTracks() {
+  if (typeof S !== 'undefined' && S && S.user && Array.isArray(S.user.activeTracks) && S.user.activeTracks.length > 0) {
+    return S.user.activeTracks;
+  }
+  return TRACKS;
+}
 const MILESTONES = [1, 3, 7, 14, 21, 30, 60, 90, 180, 365];
 const MILESTONE_NAMES = {
   1: 'First day down',      3: 'Past the first wobble',  7: 'One week',
@@ -125,6 +132,7 @@ function seed() {
       theme: 'dark',
       triggers: ['night'],
       trigger: 'night',
+      activeTracks: ['porn', 'nofap', 'paidsex'],
       onboarded: false,
       unlocked: false,
       unlockKey: '',
@@ -150,6 +158,9 @@ function load() {
   if (!S.tracks.nofap) S.tracks.nofap = { since: today(), best: 0 };
   if (!S.tracks.paidsex) S.tracks.paidsex = { since: today(), best: 0 };
   if (!S.user) S.user = { name: '', gender: 'him', theme: 'dark', triggers: ['night'], onboarded: false };
+  if (!S.user.activeTracks || !Array.isArray(S.user.activeTracks) || S.user.activeTracks.length === 0) {
+    S.user.activeTracks = ['porn', 'nofap', 'paidsex'];
+  }
   if (!S.user.triggers || !Array.isArray(S.user.triggers)) {
     S.user.triggers = S.user.trigger ? [S.user.trigger] : ['night'];
   }
@@ -285,7 +296,18 @@ function getTrackLabel(track) {
 }
 
 function renderRings() {
+  const active = getActiveTracks();
   TRACKS.forEach((track) => {
+    const card = $(`.ring-card[data-track="${track}"]`);
+    if (!card) return;
+    if (!active.includes(track)) {
+      card.hidden = true;
+      card.style.display = 'none';
+      return;
+    }
+    card.hidden = false;
+    card.style.display = '';
+
     const days = cleanDays(track);
     const next = nextMilestone(days);
 
@@ -364,6 +386,7 @@ function renderToday() {
   const btn = $('#btnCheckin');
   const title = $('#todayTitle');
   const dayName = (d) => parse(d).toLocaleDateString(undefined, { weekday: 'long' });
+  const active = getActiveTracks();
 
   btn.classList.remove('is-done', 'is-waiting');
   btn.dataset.target = target ?? '';
@@ -402,6 +425,18 @@ function renderToday() {
   const locked = !target;
 
   TRACKS.forEach((track) => {
+    const checkRow = $(`.check[data-check="${track}"]`);
+    if (checkRow) {
+      checkRow.hidden = !active.includes(track);
+      checkRow.style.display = active.includes(track) ? '' : 'none';
+    }
+    $$(`[data-relapse="${track}"]`).forEach((b) => {
+      b.hidden = !active.includes(track);
+      b.style.display = active.includes(track) ? '' : 'none';
+    });
+
+    if (!active.includes(track)) return;
+
     const ckId = track === 'porn' ? '#ckPorn' : track === 'nofap' ? '#ckFap' : '#ckPaidSex';
     const ck = $(ckId);
     if (!ck) return;
@@ -486,6 +521,7 @@ function renderHeatmap() {
 }
 
 function renderStats() {
+  const active = getActiveTracks();
   const p = cleanDays('porn'), f = cleanDays('nofap'), x = cleanDays('paidsex');
   // A record is set simply by time passing, so promote it on every render.
   const before = (S.tracks.porn.best || 0) + (S.tracks.nofap.best || 0) + (S.tracks.paidsex.best || 0);
@@ -497,23 +533,23 @@ function renderStats() {
   $('#stBestPorn').textContent  = S.tracks.porn.best;
   $('#stBestFap').textContent   = S.tracks.nofap.best;
   $('#stBestVisit').textContent = S.bestVisit;
-  // A "clean day" is a full day clean on all tracks, so count minimum clean days across tracks
-  $('#stTotalDays').textContent = Math.min(p, f, x);
+  // A "clean day" is a full day clean on active tracks, so count minimum clean days across active tracks
+  $('#stTotalDays').textContent = Math.min(...active.map(cleanDays));
   $('#stCheckins').textContent  = Object.keys(S.checkins).length;
   $('#stUrges').textContent     = S.urges.length;
   $('#stResets').textContent    = S.relapses.length;
 }
 
 function renderMilestones() {
-  const p = cleanDays('porn'), f = cleanDays('nofap'), x = cleanDays('paidsex');
-  const maxStreak = Math.max(p, f, x);
-  const next = nextMilestone(maxStreak);
+  const active = getActiveTracks();
+  const shorterStreak = Math.min(...active.map(cleanDays));
+  const next = nextMilestone(shorterStreak);
   const list = $('#milestones');
   if (!list) return;
   list.textContent = '';
 
   MILESTONES.forEach((m) => {
-    const isHit = maxStreak >= m;
+    const isHit = shorterStreak >= m;
     const li = document.createElement('li');
     li.className = 'ms' + (isHit ? ' is-hit' : '') + (m === next ? ' is-next' : '');
     li.innerHTML = `
@@ -657,8 +693,8 @@ function renderWisdom(forceNext = false) {
 }
 
 function renderHeroLine() {
-  const p = cleanDays('porn'), f = cleanDays('nofap'), x = cleanDays('paidsex');
-  const low = Math.min(p, f, x);
+  const active = getActiveTracks();
+  const low = Math.min(...active.map(cleanDays));
   const lines =
     low === 0 ? ['Day zero is not failure. It is the start of the next run.',
                  'The streak that lasts usually begins right after one that broke.']
@@ -692,12 +728,13 @@ function doCheckin() {
   const target = checkinTarget();
   if (!target) { toast('Nothing to confirm right now.'); return; }
 
+  const active = getActiveTracks();
   const ok = {
-    porn: $('#ckPorn').checked,
-    nofap: $('#ckFap').checked,
+    porn: $('#ckPorn')?.checked ?? true,
+    nofap: $('#ckFap')?.checked ?? true,
     paidsex: $('#ckPaidSex')?.checked ?? true
   };
-  const slipped = TRACKS.filter((k) => !ok[k]);
+  const slipped = active.filter((k) => !ok[k]);
   const when = target === today() ? 'today' : 'that day';
 
   if (slipped.length) {
@@ -716,12 +753,13 @@ function doCheckin() {
 
   S.checkins[target] = true;
   // Advance clean streak counter on confirmed clean days
-  TRACKS.forEach((track) => {
+  active.forEach((track) => {
     if (diffDays(S.tracks[track].since, target) === 0) {
       S.tracks[track].since = addDays(target, -1);
     }
   });
-  logIt(`Confirmed ${target} clean — ${cleanDays('porn')}d porn-free, ${cleanDays('nofap')}d abstinent, ${cleanDays('paidsex')}d paid-sex free.`);
+  const msgs = active.map((t) => `${cleanDays(t)}d ${t === 'porn' ? 'porn-free' : t === 'nofap' ? 'abstinent' : 'paid-sex free'}`).join(', ');
+  logIt(`Confirmed ${target} clean — ${msgs}.`);
   save(); renderAll(); burst();
   toast(target === today() ? 'Day closed out. That one is yours.' : 'Yesterday confirmed.');
 }
@@ -1188,6 +1226,12 @@ function finishOnboarding() {
   const selThemeBtn = $('.onboarding-option.is-selected[data-theme-mode]');
   if (selThemeBtn) S.user.theme = selThemeBtn.dataset.themeMode;
 
+  const active = [];
+  if ($('#obCkPorn')?.checked) active.push('porn');
+  if ($('#obCkFap')?.checked) active.push('nofap');
+  if ($('#obCkPaidSex')?.checked) active.push('paidsex');
+  S.user.activeTracks = active.length > 0 ? active : ['porn'];
+
   const selTriggerBtns = $$('.onboarding-option.is-selected[data-trigger]');
   S.user.triggers = Array.from(selTriggerBtns).map((btn) => btn.dataset.trigger);
   if (S.user.triggers.length === 0) S.user.triggers = ['night'];
@@ -1212,55 +1256,43 @@ function openTour(step = 1) {
   modal.hidden = false;
   document.body.style.overflow = 'hidden';
 
-  // Inject track definitions based on user gender
+  // Inject track definitions based on user gender and active tracks
   const defsEl = $('#tourTrackDefinitions');
   if (defsEl) {
     const isHer = (S.user.gender === 'her');
-    defsEl.innerHTML = isHer ? `
+    const active = getActiveTracks();
+    let html = '';
+    if (active.includes('porn')) {
+      html += `
       <div class="onboarding-option" style="cursor:default; padding:0.6rem;">
-        <span class="onboarding-option__icon">🌸</span>
+        <span class="onboarding-option__icon">${isHer ? '🌸' : '⚡'}</span>
         <div>
-          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">Erotica & Porn-free</strong>
-          <div style="color:var(--ink-dim); font-size:0.78rem;">Quitting explicit videos, smut novels (Wattpad/AO3), and romance erotica.</div>
+          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">${isHer ? 'Erotica & Porn-free' : 'Porn-free'}</strong>
+          <div style="color:var(--ink-dim); font-size:0.78rem;">${isHer ? 'Quitting explicit videos, smut novels (Wattpad/AO3), and romance erotica.' : 'Quitting adult video content, explicit feeds, and digital triggers.'}</div>
         </div>
-      </div>
+      </div>`;
+    }
+    if (active.includes('nofap')) {
+      html += `
       <div class="onboarding-option" style="cursor:default; padding:0.6rem;">
-        <span class="onboarding-option__icon">🌸</span>
+        <span class="onboarding-option__icon">${isHer ? '🌸' : '⚡'}</span>
         <div>
-          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">Self-love & Balance</strong>
-          <div style="color:var(--ink-dim); font-size:0.78rem;">Overcoming compulsive solo masturbation and using sexual pleasure as an emotional crutch.</div>
+          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">${isHer ? 'Self-love & Balance' : 'No masturbation'}</strong>
+          <div style="color:var(--ink-dim); font-size:0.78rem;">${isHer ? 'Overcoming compulsive solo masturbation and using sexual pleasure as an emotional crutch.' : 'Overcoming compulsive PMO, solo coping, and brain fog dopamine crashes.'}</div>
         </div>
-      </div>
+      </div>`;
+    }
+    if (active.includes('paidsex')) {
+      html += `
       <div class="onboarding-option" style="cursor:default; padding:0.6rem;">
-        <span class="onboarding-option__icon">🌸</span>
+        <span class="onboarding-option__icon">${isHer ? '🌸' : '⚡'}</span>
         <div>
-          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">Healthy Boundaries</strong>
-          <div style="color:var(--ink-dim); font-size:0.78rem;">Protecting yourself from toxic hookup culture, transactional validation, and high-risk intimacy.</div>
+          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">${isHer ? 'Healthy Boundaries' : 'No paid sex'}</strong>
+          <div style="color:var(--ink-dim); font-size:0.78rem;">${isHer ? 'Protecting yourself from toxic hookup culture, transactional validation, and high-risk intimacy.' : 'Abstaining from prostitution, escorts, and transactional hookups.'}</div>
         </div>
-      </div>
-    ` : `
-      <div class="onboarding-option" style="cursor:default; padding:0.6rem;">
-        <span class="onboarding-option__icon">⚡</span>
-        <div>
-          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">Porn-free</strong>
-          <div style="color:var(--ink-dim); font-size:0.78rem;">Quitting adult video content, explicit feeds, and digital triggers.</div>
-        </div>
-      </div>
-      <div class="onboarding-option" style="cursor:default; padding:0.6rem;">
-        <span class="onboarding-option__icon">⚡</span>
-        <div>
-          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">No masturbation</strong>
-          <div style="color:var(--ink-dim); font-size:0.78rem;">Overcoming compulsive PMO, solo coping, and brain fog dopamine crashes.</div>
-        </div>
-      </div>
-      <div class="onboarding-option" style="cursor:default; padding:0.6rem;">
-        <span class="onboarding-option__icon">⚡</span>
-        <div>
-          <strong style="color:var(--ink); display:block; margin-bottom:0.1rem;">No paid sex</strong>
-          <div style="color:var(--ink-dim); font-size:0.78rem;">Abstaining from prostitution, escorts, and transactional hookups.</div>
-        </div>
-      </div>
-    `;
+      </div>`;
+    }
+    defsEl.innerHTML = html;
   }
 
   switchTourStep(step);
@@ -1583,6 +1615,23 @@ function openSettings() {
   modal.hidden = false;
   document.body.style.overflow = 'hidden';
 
+  const active = getActiveTracks();
+  const ckPorn = $('#setCkPorn');
+  if (ckPorn) {
+    ckPorn.checked = active.includes('porn');
+    ckPorn.closest('.circuit-check')?.classList.toggle('is-checked', ckPorn.checked);
+  }
+  const ckFap = $('#setCkFap');
+  if (ckFap) {
+    ckFap.checked = active.includes('nofap');
+    ckFap.closest('.circuit-check')?.classList.toggle('is-checked', ckFap.checked);
+  }
+  const ckPaidSex = $('#setCkPaidSex');
+  if (ckPaidSex) {
+    ckPaidSex.checked = active.includes('paidsex');
+    ckPaidSex.closest('.circuit-check')?.classList.toggle('is-checked', ckPaidSex.checked);
+  }
+
   $$('.onboarding-option[data-set-theme]').forEach((btn) => {
     btn.classList.toggle('is-selected', btn.dataset.setTheme === (S.user.theme || 'dark'));
   });
@@ -1600,6 +1649,16 @@ function closeSettings() {
 }
 
 function saveSettings() {
+  const active = [];
+  if ($('#setCkPorn')?.checked) active.push('porn');
+  if ($('#setCkFap')?.checked) active.push('nofap');
+  if ($('#setCkPaidSex')?.checked) active.push('paidsex');
+  if (active.length === 0) {
+    toast('Please keep at least 1 active boundary tracked.');
+    return;
+  }
+  S.user.activeTracks = active;
+
   const selThemeBtn = $('.onboarding-option.is-selected[data-set-theme]');
   if (selThemeBtn) S.user.theme = selThemeBtn.dataset.setTheme;
 
@@ -1769,7 +1828,17 @@ function bind() {
   $('#btnObBack2')?.addEventListener('click', () => switchObStep(1));
   $('#btnObNext2')?.addEventListener('click', () => switchObStep(3));
   $('#btnObBack3')?.addEventListener('click', () => switchObStep(2));
-  $('#btnObNext3')?.addEventListener('click', () => switchObStep(4));
+  $('#btnObNext3')?.addEventListener('click', () => {
+    const active = [];
+    if ($('#obCkPorn')?.checked) active.push('porn');
+    if ($('#obCkFap')?.checked) active.push('nofap');
+    if ($('#obCkPaidSex')?.checked) active.push('paidsex');
+    if (active.length === 0) {
+      toast('Please select at least 1 boundary to track.');
+      return;
+    }
+    switchObStep(4);
+  });
   $('#btnObBack4')?.addEventListener('click', () => switchObStep(3));
   $('#btnObNext4')?.addEventListener('click', () => switchObStep(5));
   $('#btnObBack5')?.addEventListener('click', () => switchObStep(4));
