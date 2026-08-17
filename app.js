@@ -471,6 +471,36 @@ function renderChaserBanner() {
   banner.style.display = '';
 }
 
+function getUnconfirmedPastDays() {
+  const t = today();
+  const unconfirmed = [];
+  const lateEnough = new Date().getHours() >= CHECKIN_HOUR;
+  const active = getActiveTracks();
+
+  let earliest = S?.firstRun || t;
+  active.forEach((track) => {
+    if (S?.tracks?.[track]?.since && S.tracks[track].since < earliest) {
+      earliest = S.tracks[track].since;
+    }
+  });
+
+  const maxBack = addDays(t, -30);
+  if (earliest < maxBack) earliest = maxBack;
+
+  const lastDay = lateEnough ? t : addDays(t, -1);
+  let cursor = earliest;
+  while (cursor <= lastDay) {
+    const isChecked = !!S?.checkins?.[cursor];
+    const isRelapse = S?.relapses?.some((r) => r.date === cursor);
+    if (!isChecked && !isRelapse) {
+      unconfirmed.push(cursor);
+    }
+    cursor = addDays(cursor, 1);
+  }
+
+  return unconfirmed;
+}
+
 function renderBacklogBanner() {
   const banner = $('#backlogBanner');
   if (!banner) return;
@@ -779,7 +809,7 @@ function renderHeatmap() {
     frag.append(cell);
   }
   grid.append(frag);
-  grid.parentElement.scrollLeft = grid.parentElement.scrollWidth;
+  if (grid?.parentElement) grid.parentElement.scrollLeft = grid.parentElement.scrollWidth;
 }
 
 function renderStats() {
@@ -801,6 +831,8 @@ function renderStats() {
   $('#stUrges').textContent     = S.urges.length;
   $('#stResets').textContent    = S.relapses.length;
 }
+
+let selectedMilestoneTrack = 'combined';
 
 function renderMilestones() {
   const active = getActiveTracks();
