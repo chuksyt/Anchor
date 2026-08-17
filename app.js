@@ -471,6 +471,250 @@ function renderChaserBanner() {
   banner.style.display = '';
 }
 
+function renderBacklogBanner() {
+  const banner = $('#backlogBanner');
+  if (!banner) return;
+  const missed = getUnconfirmedPastDays().filter((d) => d !== today());
+
+  if (!missed.length) {
+    banner.hidden = true;
+    banner.style.display = 'none';
+    return;
+  }
+
+  banner.hidden = false;
+  banner.style.display = '';
+
+  const titleEl = $('#backlogTitle');
+  const subEl = $('#backlogSub');
+  if (titleEl) {
+    titleEl.textContent = `${missed.length} Missed ${missed.length === 1 ? 'Check-in' : 'Check-ins'} Detected`;
+  }
+  if (subEl) {
+    const dateNames = missed.slice(-3).map((d) => {
+      return parse(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }).join(', ');
+    const more = missed.length > 3 ? ` +${missed.length - 3} more` : '';
+    subEl.textContent = `Unconfirmed days: ${dateNames}${more}. Did you stay clean?`;
+  }
+}
+
+function confirmAllMissedDays() {
+  const missed = getUnconfirmedPastDays().filter((d) => d !== today());
+  if (!missed.length) {
+    toast('No missed past days to confirm.');
+    return;
+  }
+
+  missed.forEach((d) => {
+    S.checkins[d] = true;
+  });
+
+  const active = getActiveTracks();
+  active.forEach((track) => {
+    if (diffDays(S.tracks[track].since, today()) === 0) {
+      S.tracks[track].since = addDays(today(), -1);
+    }
+  });
+
+  logIt(`Back-logged & confirmed ${missed.length} clean ${missed.length === 1 ? 'day' : 'days'}.`);
+  save();
+  renderAll();
+  burst();
+  toast(`All ${missed.length} missed days confirmed clean! 🎉`);
+}
+
+function openBacklogModal() {
+  const modal = $('#backlogModal');
+  const listContainer = $('#backlogDaysList');
+  if (!modal || !listContainer) return;
+
+  const missed = getUnconfirmedPastDays().filter((d) => d !== today());
+  if (!missed.length) {
+    toast('All past days are already confirmed! 🎉');
+    return;
+  }
+
+  listContainer.innerHTML = '';
+  missed.forEach((d) => {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:var(--bg-2); border:1px solid var(--stroke-hi); border-radius:var(--radius); padding:0.65rem 0.85rem; display:grid; gap:0.4rem;';
+    const dayLabel = parse(d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong style="color:var(--cyan-soft); font-size:var(--step--1);">${dayLabel}</strong>
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; cursor:pointer; color:var(--ink);">
+          <input type="checkbox" class="backlog-day-cb" data-date="${d}" checked />
+          <span>Mark Clean ✓</span>
+        </label>
+      </div>
+    `;
+    listContainer.append(card);
+  });
+
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBacklogModal() {
+  const modal = $('#backlogModal');
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function saveBacklogModal() {
+  const checkedBoxes = $$('.backlog-day-cb:checked');
+  if (!checkedBoxes.length) {
+    closeBacklogModal();
+    return;
+  }
+
+  let count = 0;
+  checkedBoxes.forEach((cb) => {
+    const d = cb.dataset.date;
+    if (d) {
+      S.checkins[d] = true;
+      count++;
+    }
+  });
+
+  logIt(`Back-logged ${count} clean ${count === 1 ? 'day' : 'days'}.`);
+  save();
+  closeBacklogModal();
+  renderAll();
+  burst();
+  toast(`${count} past ${count === 1 ? 'day' : 'days'} confirmed clean! 🎉`);
+}
+
+let activeDayLogDate = null;
+function openDayLogModal(d) {
+  if (!d || d > today()) return;
+  activeDayLogDate = d;
+
+  const modal = $('#dayLogModal');
+  if (!modal) return;
+
+  const dateObj = parse(d);
+  const formattedDate = dateObj.toLocaleDateString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+  });
+
+  $('#dayLogTitle').textContent = formattedDate;
+
+  const statusBadge = $('#dayLogStatusBadge');
+  const isChecked = !!S.checkins[d];
+  const dateRelapses = S.relapses.filter((r) => r.date === d);
+
+  if (dateRelapses.length) {
+    const relLabels = dateRelapses.map((r) => getTrackLabel(r.track) || r.track).join(', ');
+    statusBadge.innerHTML = `<span class="day-log-status-pill day-log-status-pill--relapse">⚠️ Slip: ${relLabels}</span>`;
+  } else if (isChecked) {
+    statusBadge.innerHTML = `<span class="day-log-status-pill day-log-status-pill--confirmed">✓ Checked In Clean</span>`;
+  } else {
+    statusBadge.innerHTML = `<span class="day-log-status-pill day-log-status-pill--clean">⏳ Unconfirmed Clean</span>`;
+  }
+
+  const active = getActiveTracks();
+  TRACKS.forEach((track) => {
+    const row = $(`[data-day-check="${track}"]`);
+    if (row) {
+      row.hidden = !active.includes(track);
+      row.style.display = active.includes(track) ? '' : 'none';
+    }
+    const lbl = $(`#dayLabel${track === 'porn' ? 'Porn' : track === 'nofap' ? 'Fap' : 'PaidSex'}`);
+    if (lbl) lbl.textContent = getTrackLabel(track);
+
+    const ckId = track === 'porn' ? '#dayCkPorn' : track === 'nofap' ? '#dayCkFap' : '#dayCkPaidSex';
+    const ck = $(ckId);
+    if (ck) {
+      const hasRelapseOnDate = dateRelapses.some((r) => r.track === track);
+      ck.checked = !hasRelapseOnDate;
+    }
+  });
+
+  const noteInput = $('#dayLogNote');
+  if (noteInput) {
+    const existingNote = dateRelapses.map((r) => r.note).filter(Boolean).join('; ');
+    noteInput.value = existingNote || '';
+  }
+
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDayLogModal() {
+  const modal = $('#dayLogModal');
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = '';
+  activeDayLogDate = null;
+}
+
+function saveDayLogClean() {
+  if (!activeDayLogDate) return;
+  const d = activeDayLogDate;
+  const note = $('#dayLogNote')?.value.trim() || '';
+
+  S.relapses = S.relapses.filter((r) => r.date !== d);
+  S.checkins[d] = true;
+
+  const active = getActiveTracks();
+  active.forEach((track) => {
+    if (diffDays(S.tracks[track].since, d) === 0) {
+      S.tracks[track].since = addDays(d, -1);
+    }
+  });
+
+  logIt(`Marked ${d} confirmed clean.`, note);
+  save();
+  closeDayLogModal();
+  renderAll();
+  burst();
+  toast(`Date ${d} confirmed clean! ✓`);
+}
+
+function logDaySlip() {
+  if (!activeDayLogDate) return;
+  const d = activeDayLogDate;
+  const active = getActiveTracks();
+  const ok = {
+    porn: $('#dayCkPorn')?.checked ?? true,
+    nofap: $('#dayCkFap')?.checked ?? true,
+    paidsex: $('#dayCkPaidSex')?.checked ?? true
+  };
+  const slipped = active.filter((k) => !ok[k]);
+  const note = $('#dayLogNote')?.value.trim() || '';
+
+  if (!slipped.length) {
+    toast('Uncheck the habit(s) that slipped on this date first.');
+    return;
+  }
+
+  closeDayLogModal();
+  confirmDialog(
+    `Log slip on ${d}?`,
+    `You indicated a slip on ${slipped.map((k) => getTrackLabel(k)).join(' and ')}. Counter for that track will restart from ${addDays(d, 1)}.`,
+    'Log Slip',
+    (confirmNote) => {
+      slipped.forEach((k) => {
+        relapse(k, d, false, confirmNote || note);
+      });
+    },
+    { field: { label: 'What set it off?', placeholder: 'Reflect honestly on triggers...' } }
+  );
+}
+
+function clearDayLog() {
+  if (!activeDayLogDate) return;
+  const d = activeDayLogDate;
+  delete S.checkins[d];
+  S.relapses = S.relapses.filter((r) => r.date !== d);
+  save();
+  closeDayLogModal();
+  renderAll();
+  toast(`Cleared log status for ${d}.`);
+}
+
 function renderHeatmap() {
   const grid = $('#heatmap');
   grid.textContent = '';
@@ -496,15 +740,20 @@ function renderHeatmap() {
     let note = '';
     const dateRelapses = relapsesByDate[d] || [];
 
-    if (d > t)                          { cell.classList.add('cell--future'); state = 'Upcoming'; }
-    else if (dateRelapses.length) {
+    if (d > t) {
+      cell.classList.add('cell--future');
+      state = 'Upcoming';
+    } else if (dateRelapses.length) {
       cell.classList.add('cell--relapse');
       state = `Reset: ${dateRelapses.map((r) => LABEL[r.track] || r.track).join(', ')}`;
       note = dateRelapses.map((r) => r.note).filter(Boolean).join('; ');
+    } else if (S.checkins[d]) {
+      cell.classList.add('cell--confirmed');
+      state = 'Checked in ✓';
+    } else if (d >= S.firstRun || TRACKS.some((k) => d >= S.tracks[k]?.since)) {
+      cell.classList.add('cell--clean');
+      state = 'Clean';
     }
-    else if (S.checkins[d])             { cell.classList.add('cell--confirmed'); state = 'Checked in ✓'; }
-    else if (d >= S.firstRun || TRACKS.some((k) => d >= S.tracks[k]?.since)) {
-                                          cell.classList.add('cell--clean'); state = 'Clean'; }
     if (d === t) cell.classList.add('cell--today');
 
     cell.dataset.date = d;
@@ -514,6 +763,19 @@ function renderHeatmap() {
     cell.title = `${parse(d).toLocaleDateString(undefined,
       { weekday: 'short', day: 'numeric', month: 'short' })} — ${state}${note ? ` ("${note}")` : ''}`;
     cell.setAttribute('aria-label', cell.title);
+
+    if (d <= t) {
+      cell.setAttribute('tabindex', '0');
+      cell.setAttribute('role', 'button');
+      cell.addEventListener('click', () => openDayLogModal(d));
+      cell.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openDayLogModal(d);
+        }
+      });
+    }
+
     frag.append(cell);
   }
   grid.append(frag);
@@ -542,14 +804,93 @@ function renderStats() {
 
 function renderMilestones() {
   const active = getActiveTracks();
-  const shorterStreak = Math.min(...active.map(cleanDays));
-  const next = nextMilestone(shorterStreak);
+  const tabsContainer = $('#milestoneTabs');
+  
+  if (selectedMilestoneTrack !== 'combined' && !active.includes(selectedMilestoneTrack)) {
+    selectedMilestoneTrack = 'combined';
+  }
+
+  // Render milestone track tabs
+  if (tabsContainer) {
+    tabsContainer.innerHTML = '';
+    
+    if (active.length > 1) {
+      const combinedDays = Math.min(...active.map(cleanDays));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ms-tab' + (selectedMilestoneTrack === 'combined' ? ' is-active' : '');
+      btn.dataset.msTrack = 'combined';
+      btn.innerHTML = `⚡ Combined <span class="ms-tab__badge">${combinedDays}d</span>`;
+      btn.addEventListener('click', () => {
+        selectedMilestoneTrack = 'combined';
+        renderMilestones();
+      });
+      tabsContainer.append(btn);
+    }
+
+    active.forEach((track) => {
+      const days = cleanDays(track);
+      const icon = track === 'porn' ? '🌸' : track === 'nofap' ? '⚡' : '🛡️';
+      const label = getTrackLabel(track);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ms-tab' + (selectedMilestoneTrack === track ? ' is-active' : '');
+      btn.dataset.msTrack = track;
+      btn.innerHTML = `${icon} ${label} <span class="ms-tab__badge">${days}d</span>`;
+      btn.addEventListener('click', () => {
+        selectedMilestoneTrack = track;
+        renderMilestones();
+      });
+      tabsContainer.append(btn);
+    });
+  }
+
+  let currentStreak = 0;
+  let activeTitle = '';
+  if (selectedMilestoneTrack === 'combined') {
+    currentStreak = Math.min(...active.map(cleanDays));
+    activeTitle = 'All Habits Combined';
+  } else {
+    currentStreak = cleanDays(selectedMilestoneTrack);
+    activeTitle = getTrackLabel(selectedMilestoneTrack);
+  }
+
+  const next = nextMilestone(currentStreak);
+
+  const labelEl = $('#msActiveLabel');
+  const statEl = $('#msCurrentDays');
+  const badgeEl = $('#msNextBadge');
+  const fillEl = $('#msBarFill');
+  const subEl = $('#milestoneSubtitle');
+
+  if (subEl) {
+    subEl.textContent = selectedMilestoneTrack === 'combined'
+      ? 'Based on all active habits synced'
+      : `Tracking ${activeTitle} progression`;
+  }
+  if (labelEl) labelEl.textContent = `${activeTitle} Streak`;
+  if (statEl) statEl.textContent = String(currentStreak);
+
+  if (badgeEl && fillEl) {
+    if (next) {
+      const gap = next - currentStreak;
+      const prevMilestones = MILESTONES.filter((m) => m <= currentStreak);
+      const prevMilestone = prevMilestones.length ? prevMilestones[prevMilestones.length - 1] : 0;
+      const progressFraction = Math.min(1, Math.max(0.06, (currentStreak - prevMilestone) / (next - prevMilestone)));
+      fillEl.style.width = `${progressFraction * 100}%`;
+      badgeEl.textContent = `Next: Day ${next} (${MILESTONE_NAMES[next]}) — ${gap === 1 ? 'tomorrow' : `${gap} days away`}`;
+    } else {
+      fillEl.style.width = '100%';
+      badgeEl.textContent = 'All milestones cleared! 👑';
+    }
+  }
+
   const list = $('#milestones');
   if (!list) return;
   list.textContent = '';
 
   MILESTONES.forEach((m) => {
-    const isHit = shorterStreak >= m;
+    const isHit = currentStreak >= m;
     const li = document.createElement('li');
     li.className = 'ms' + (isHit ? ' is-hit' : '') + (m === next ? ' is-next' : '');
     li.innerHTML = `
@@ -711,6 +1052,7 @@ function renderHeroLine() {
 
 function renderAll() {
   renderChaserBanner();
+  renderBacklogBanner();
   renderGreeting();
   renderTop(); renderRings(); renderToday();
   renderWisdom();
@@ -1923,12 +2265,33 @@ function bind() {
     e.target.textContent = t.hidden ? 'Show table' : 'Hide table';
     e.target.setAttribute('aria-expanded', String(!t.hidden));
   });
-  $('#modalNo').addEventListener('click', closeModal);
-  $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+  $('#modalNo')?.addEventListener('click', closeModal);
+  $('#modal')?.addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+
+  // Backlog and Day Log Modal Bindings
+  $('#btnQuickConfirmAll')?.addEventListener('click', confirmAllMissedDays);
+  $('#btnOpenBacklogModal')?.addEventListener('click', openBacklogModal);
+  $('#btnBacklogModalClose')?.addEventListener('click', closeBacklogModal);
+  $('#btnBacklogModalCancel')?.addEventListener('click', closeBacklogModal);
+  $('#btnConfirmSelectedBacklog')?.addEventListener('click', saveBacklogModal);
+
+  $('#btnDayLogClose')?.addEventListener('click', closeDayLogModal);
+  $('#btnSaveDayClean')?.addEventListener('click', saveDayLogClean);
+  $('#btnLogDayRelapse')?.addEventListener('click', logDaySlip);
+  $('#btnClearDayLog')?.addEventListener('click', clearDayLog);
+
+  $('#dayLogModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'dayLogModal') closeDayLogModal();
+  });
+  $('#backlogModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'backlogModal') closeBacklogModal();
+  });
 
   addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!$('#modal').hidden) closeModal();
+    else if (!$('#dayLogModal').hidden) closeDayLogModal();
+    else if (!$('#backlogModal').hidden) closeBacklogModal();
     else if (!$('#urge').hidden) closeUrge();
   });
 

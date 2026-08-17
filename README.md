@@ -29,10 +29,11 @@ then open <http://127.0.0.1:8777>.
 | **Clean counters** | Time-based — days elapsed since `since`. Seeded at **2 days** for both, as of first run. |
 | **Daily check-in** | Only unlocks at **8pm** — a day can't be claimed before it's over. Before then it offers yesterday, if that's still unconfirmed. Leaving a box unchecked offers to reset that counter instead. |
 | **Reset** | Available any time. Marks that day as a break and restarts the count from the *following* day. Saves the old run as your record. |
-| **Heatmap** | Last 18 weeks. Clean / checked-in / reset / upcoming. |
+| **Heatmap** | Last 18 weeks. Clean / checked-in / reset / upcoming. **Click any past day** to view details, confirm clean, or log a past slip with notes. |
 | **Reset notes** | Every reset can carry a free-text note (where you were, what set it off). Shown under its log entry. |
 | **When it hits** | Urges ridden out, plotted by hour of day, with resets as a status mark below the baseline. Names your peak hour once there are ≥3 urges. Has a table view. |
-| **Milestones** | 1, 3, 7, 14, 21, 30, 60, 90, 180, 365 — tracked against your *shorter* streak. |
+| **Milestones** | 1, 3, 7, 14, 21, 30, 60, 90, 180, 365 — track each habit's milestones **independently** (via tabs) or combined! |
+| **Back-Log System** | Missed logging for a few days? An alert banner lets you 1-tap confirm all missed days as clean or review day-by-day without losing your streak. |
 | **Urge mode** | Full-screen 4-4-6 paced breathing (4 cycles) plus rotating grounding prompts. Pressing **"I'm alright now"** logs it as an urge ridden out, with the cycle count. Escape just exits and logs nothing. |
 | **Erase all data** | Wipes localStorage and reseeds. |
 

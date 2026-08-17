@@ -571,9 +571,11 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   border-radius: 4px;
   background: var(--glass-hi);
   border: 1px solid var(--stroke);
+  cursor: pointer;
   transition: transform 0.2s var(--ease), box-shadow 0.2s;
 }
 .cell:hover { transform: scale(1.45); box-shadow: 0 0 0 1px var(--stroke-hi); z-index: 3; }
+.cell:focus-visible { outline: 2px solid var(--cyan); z-index: 4; }
 .cell--clean     { background: rgb(139 92 246 / 0.42); border-color: transparent; }
 .cell--confirmed {
   background: linear-gradient(140deg, var(--cyan-soft), var(--violet-soft));
@@ -582,7 +584,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 }
 .cell--relapse { background: rgb(244 63 94 / 0.75); border-color: transparent; }
 .cell--today   { outline: 1.5px solid var(--ink); outline-offset: 2px; }
-.cell--future  { opacity: 0.25; }
+.cell--future  { opacity: 0.25; cursor: default; }
 
 /* ── Stats ───────────────────────────────────────────────────── */
 .stats {
@@ -692,6 +694,107 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 }
 
 /* ── Milestones ──────────────────────────────────────────────── */
+.milestone-tabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.ms-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.32rem 0.75rem;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--stroke);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--step--1);
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+}
+.ms-tab:hover {
+  border-color: var(--stroke-hi);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+.ms-tab.is-active {
+  background: rgb(139 92 246 / 0.22);
+  border-color: var(--violet-soft);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 0 12px rgb(167 139 250 / 0.25);
+}
+.ms-tab__badge {
+  display: inline-block;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.08);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--cyan-soft);
+}
+.ms-tab.is-active .ms-tab__badge {
+  background: var(--cyan-soft);
+  color: #0b0f19;
+}
+
+.milestone-progress-card {
+  background: linear-gradient(135deg, rgb(139 92 246 / 0.12), rgb(34 211 238 / 0.08));
+  border: 1px solid var(--stroke-hi);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.milestone-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.ms-active-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  display: block;
+}
+.ms-active-stat {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ms-active-stat strong {
+  color: var(--cyan-soft);
+  font-size: 1.35rem;
+}
+.ms-next-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--violet-soft);
+  background: rgb(167 139 250 / 0.12);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgb(167 139 250 / 0.3);
+}
+.ms-bar-track {
+  height: 6px;
+  background: var(--glass-hi);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.ms-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--violet-soft), var(--cyan-soft));
+  border-radius: 999px;
+  transition: width 0.6s var(--ease);
+}
+
 .milestones { display: grid; gap: 0.55rem; }
 .ms {
   display: grid;
@@ -717,6 +820,91 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .ms.is-hit .ms__name { color: var(--ink); }
 .ms.is-next { border-color: rgb(34 211 238 / 0.45); }
 .ms.is-next .ms__dot { background: var(--cyan); box-shadow: 0 0 12px var(--cyan); animation: pulse 2s infinite; }
+
+/* ── Backlog Banner & Interactive Days ────────────────────────── */
+.backlog-banner {
+  background: linear-gradient(135deg, rgb(245 158 11 / 0.12), rgb(234 88 12 / 0.06));
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius);
+  padding: 0.85rem 1.1rem;
+  margin-bottom: var(--space-m);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.08);
+}
+.backlog-banner__content {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  flex: 1 1 260px;
+}
+.backlog-banner__icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+.backlog-banner__title {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+  font-size: var(--step-0);
+}
+.backlog-banner__sub {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+  margin-top: 0.15rem;
+}
+.backlog-banner__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.btn--amber {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #0b0f19;
+  font-weight: 700;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.btn--amber:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
+}
+
+.day-log-card {
+  max-width: 460px;
+}
+.day-log-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+}
+.day-log-status-pill--confirmed {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+.day-log-status-pill--clean {
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  color: var(--violet-soft);
+}
+.day-log-status-pill--relapse {
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  color: #fb7185;
+}
 
 /* ── Log ─────────────────────────────────────────────────────── */
 .log { display: grid; gap: 0.4rem; max-height: 320px; overflow-y: auto; }

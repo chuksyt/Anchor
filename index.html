@@ -150,6 +150,21 @@
       </div>
     </section>
 
+    <!-- ── Missed Check-ins Backlog Alert ────────────────────────── -->
+    <div class="backlog-banner reveal" id="backlogBanner" hidden>
+      <div class="backlog-banner__content">
+        <span class="backlog-banner__icon">🗓️</span>
+        <div>
+          <span class="backlog-banner__title" id="backlogTitle">Missed Check-ins Detected</span>
+          <span class="backlog-banner__sub" id="backlogSub">You have unconfirmed past days. Did you stay clean?</span>
+        </div>
+      </div>
+      <div class="backlog-banner__actions">
+        <button class="btn--amber" id="btnQuickConfirmAll">⚡ Confirm All Clean</button>
+        <button class="btn btn--ghost" id="btnOpenBacklogModal" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">Review Days</button>
+      </div>
+    </div>
+
     <!-- ── Today ────────────────────────────────────────────── -->
     <section class="panel reveal" id="today">
       <div class="panel__head">
@@ -195,7 +210,10 @@
     <!-- ── Calendar heatmap ─────────────────────────────────── -->
     <section class="panel reveal" id="historyPanel">
       <div class="panel__head">
-        <h3>The last 18 weeks</h3>
+        <div>
+          <h3 style="margin-bottom:0.15rem;">The last 18 weeks</h3>
+          <span class="panel__note" style="color:var(--cyan-soft); font-size:0.75rem;">💡 Click any past day to view, confirm, or edit logs</span>
+        </div>
         <div class="legend">
           <span class="legend__item"><i class="sw sw--empty"></i>none</span>
           <span class="legend__item"><i class="sw sw--clean"></i>clean</span>
@@ -247,10 +265,29 @@
 
     <!-- ── Milestones ───────────────────────────────────────── -->
     <section class="panel reveal" id="milestonePanel">
-      <div class="panel__head">
-        <h3>Milestones</h3>
-        <span class="panel__note">Based on your shorter streak</span>
+      <div class="panel__head" style="flex-direction: column; align-items: stretch; gap: 0.75rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+          <h3 style="margin: 0;">Milestones</h3>
+          <span class="panel__note" id="milestoneSubtitle">Independent habit progression</span>
+        </div>
+        <div class="milestone-tabs" id="milestoneTabs" role="tablist" aria-label="Habit milestone tracks">
+          <!-- Populated dynamically: Combined, Porn-free, Abstinence, Paid sex -->
+        </div>
       </div>
+
+      <div class="milestone-progress-card" id="milestoneProgressCard">
+        <div class="milestone-progress-info">
+          <div>
+            <span class="ms-active-label" id="msActiveLabel">Streak Progress</span>
+            <div class="ms-active-stat" id="msActiveStat"><strong id="msCurrentDays">0</strong> days clean</div>
+          </div>
+          <div class="ms-next-badge" id="msNextBadge">Next milestone</div>
+        </div>
+        <div class="ms-bar-track">
+          <div class="ms-bar-fill" id="msBarFill" style="width: 0%;"></div>
+        </div>
+      </div>
+
       <ol class="milestones" id="milestones"></ol>
     </section>
 
@@ -818,6 +855,84 @@
           <button class="btn btn--ghost" id="btnCopyPartnerUrl" style="padding:0.4rem 0.8rem;">Copy</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Day Details & Log Editor Modal ────────────────────────────── -->
+<div class="modal" id="dayLogModal" hidden style="z-index: 105;">
+  <div class="modal__card day-log-card" role="dialog" aria-modal="true" aria-labelledby="dayLogTitle">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.5rem;">
+      <div>
+        <h4 id="dayLogTitle" style="margin: 0; color: var(--cyan-soft);">Date</h4>
+        <div id="dayLogStatusBadge" style="margin-top: 0.35rem;"></div>
+      </div>
+      <button class="onboarding__close" id="btnDayLogClose" title="Close">✕</button>
+    </div>
+
+    <div style="display: grid; gap: 0.8rem; margin-top: 0.6rem;">
+      <div id="dayLogChecksContainer" style="display: grid; gap: 0.4rem;">
+        <label class="check" data-day-check="porn">
+          <input type="checkbox" id="dayCkPorn" />
+          <span class="check__box" aria-hidden="true"></span>
+          <span class="check__text">
+            <strong id="dayLabelPorn">Stayed away from porn</strong>
+          </span>
+        </label>
+        <label class="check" data-day-check="nofap">
+          <input type="checkbox" id="dayCkFap" />
+          <span class="check__box" aria-hidden="true"></span>
+          <span class="check__text">
+            <strong id="dayLabelFap">Didn't masturbate</strong>
+          </span>
+        </label>
+        <label class="check" data-day-check="paidsex">
+          <input type="checkbox" id="dayCkPaidSex" />
+          <span class="check__box" aria-hidden="true"></span>
+          <span class="check__text">
+            <strong id="dayLabelPaidSex">No paid sex / hookups</strong>
+          </span>
+        </label>
+      </div>
+
+      <label class="modal__field">
+        <span style="font-size: var(--step--1); color: var(--ink-dim);">Day Reflection / Note:</span>
+        <textarea id="dayLogNote" rows="2" maxlength="280" placeholder="Any reflection or details about this day?"></textarea>
+      </label>
+
+      <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.4rem;">
+        <button class="btn btn--primary" id="btnSaveDayClean">
+          <span class="btn__glow"></span>Confirm Day as Clean ✓
+        </button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn--danger-ghost" id="btnLogDayRelapse" style="flex: 1; font-size: 0.78rem;">Log Slip on this date</button>
+          <button class="btn btn--ghost" id="btnClearDayLog" style="flex: 1; font-size: 0.78rem;">Clear status</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Batch Backlog Review Modal ────────────────────────────────── -->
+<div class="modal" id="backlogModal" hidden style="z-index: 106;">
+  <div class="modal__card" style="max-width: 500px;" role="dialog" aria-modal="true" aria-labelledby="backlogModalTitle">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+      <h4 id="backlogModalTitle" style="margin: 0; color: #f59e0b;">🗓️ Review Missed Check-ins</h4>
+      <button class="onboarding__close" id="btnBacklogModalClose" title="Close">✕</button>
+    </div>
+    <p style="font-size: var(--step--1); color: var(--ink-dim); margin-top: 0;">
+      You missed logging these recent days. Verify your clean days below:
+    </p>
+
+    <div id="backlogDaysList" style="display: grid; gap: 0.6rem; max-height: 280px; overflow-y: auto; padding-right: 0.3rem;">
+      <!-- Populated with list of unconfirmed dates -->
+    </div>
+
+    <div class="modal__actions" style="margin-top: 1rem;">
+      <button class="btn btn--ghost" id="btnBacklogModalCancel">Cancel</button>
+      <button class="btn btn--primary" id="btnConfirmSelectedBacklog">
+        <span class="btn__glow"></span>Save & Confirm Checked Days
+      </button>
     </div>
   </div>
 </div>
