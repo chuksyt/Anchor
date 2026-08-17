@@ -825,42 +825,34 @@ function renderStats() {
   $('#stBestPorn').textContent  = S.tracks.porn.best;
   $('#stBestFap').textContent   = S.tracks.nofap.best;
   $('#stBestVisit').textContent = S.bestVisit;
-  // A "clean day" is a full day clean on active tracks, so count minimum clean days across active tracks
-  $('#stTotalDays').textContent = Math.min(...active.map(cleanDays));
+  // Prioritize No masturbation / primary clean days
+  $('#stTotalDays').textContent = active.includes('nofap') ? cleanDays('nofap') : Math.max(...active.map(cleanDays));
   $('#stCheckins').textContent  = Object.keys(S.checkins).length;
   $('#stUrges').textContent     = S.urges.length;
   $('#stResets').textContent    = S.relapses.length;
 }
 
-let selectedMilestoneTrack = 'combined';
+let selectedMilestoneTrack = 'nofap';
 
 function renderMilestones() {
   const active = getActiveTracks();
   const tabsContainer = $('#milestoneTabs');
   
-  if (selectedMilestoneTrack !== 'combined' && !active.includes(selectedMilestoneTrack)) {
-    selectedMilestoneTrack = 'combined';
+  if (!selectedMilestoneTrack || (selectedMilestoneTrack !== 'combined' && !active.includes(selectedMilestoneTrack))) {
+    selectedMilestoneTrack = active.includes('nofap') ? 'nofap' : (active[0] || 'combined');
   }
 
-  // Render milestone track tabs
+  // Render milestone track tabs with No Masturbation prioritized first
   if (tabsContainer) {
     tabsContainer.innerHTML = '';
-    
-    if (active.length > 1) {
-      const combinedDays = Math.min(...active.map(cleanDays));
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'ms-tab' + (selectedMilestoneTrack === 'combined' ? ' is-active' : '');
-      btn.dataset.msTrack = 'combined';
-      btn.innerHTML = `⚡ Combined <span class="ms-tab__badge">${combinedDays}d</span>`;
-      btn.addEventListener('click', () => {
-        selectedMilestoneTrack = 'combined';
-        renderMilestones();
-      });
-      tabsContainer.append(btn);
-    }
 
-    active.forEach((track) => {
+    const orderedTracks = [...active].sort((a, b) => {
+      if (a === 'nofap') return -1;
+      if (b === 'nofap') return 1;
+      return 0;
+    });
+
+    orderedTracks.forEach((track) => {
       const days = cleanDays(track);
       const icon = track === 'porn' ? '🌸' : track === 'nofap' ? '⚡' : '🛡️';
       const label = getTrackLabel(track);
@@ -875,6 +867,20 @@ function renderMilestones() {
       });
       tabsContainer.append(btn);
     });
+    
+    if (active.length > 1) {
+      const combinedDays = Math.min(...active.map(cleanDays));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ms-tab' + (selectedMilestoneTrack === 'combined' ? ' is-active' : '');
+      btn.dataset.msTrack = 'combined';
+      btn.innerHTML = `⚡ Combined <span class="ms-tab__badge">${combinedDays}d</span>`;
+      btn.addEventListener('click', () => {
+        selectedMilestoneTrack = 'combined';
+        renderMilestones();
+      });
+      tabsContainer.append(btn);
+    }
   }
 
   let currentStreak = 0;
@@ -1067,15 +1073,15 @@ function renderWisdom(forceNext = false) {
 
 function renderHeroLine() {
   const active = getActiveTracks();
-  const low = Math.min(...active.map(cleanDays));
+  const streak = active.includes('nofap') ? cleanDays('nofap') : Math.min(...active.map(cleanDays));
   const lines =
-    low === 0 ? ['Day zero is not failure. It is the start of the next run.',
+    streak === 0 ? ['Day zero is not failure. It is the start of the next run.',
                  'The streak that lasts usually begins right after one that broke.']
-  : low < 3   ? ['The hardest stretch is the one you are standing in.',
+  : streak < 3   ? ['The hardest stretch is the one you are standing in.',
                  'Two or three days in, the noise is loudest. Keep walking.']
-  : low < 7   ? ['Your brain is starting to notice you mean it.',
+  : streak < 7   ? ['Your brain is starting to notice you mean it.',
                  'Momentum is real now. Protect it.']
-  : low < 30  ? ['This is no longer an attempt. It is a pattern.',
+  : streak < 30  ? ['This is no longer an attempt. It is a pattern.',
                  'You have proven you can. Now prove you will.']
   :             ['You are not resisting anymore. You are just someone who does not do that.',
                  'This is who you are now. Keep the receipts coming.'];
@@ -1532,7 +1538,11 @@ function renderGreeting() {
   const hr = new Date().getHours();
   const icon = hr < 12 ? '☀️' : hr < 17 ? '⚡' : '🌙';
   const timeStr = hr < 12 ? 'Good morning' : hr < 17 ? 'Stay steady' : 'Good evening';
-  const streak = Math.min(...TRACKS.map(cleanDays));
+  const active = getActiveTracks();
+  // Prioritize No masturbation / primary clean streak
+  const streak = active.includes('nofap')
+    ? cleanDays('nofap')
+    : (active.length > 0 ? cleanDays(active[0]) : 0);
   
   if (name) {
     el.innerHTML = streak >= 7 
