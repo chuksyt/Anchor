@@ -951,9 +951,10 @@
 <!-- ── Milestone Perk Celebration Modal ──────────────────────────── -->
 <div class="modal" id="milestonePerkModal" hidden style="z-index: 110;">
   <div class="modal__card perk-modal__card" role="dialog" aria-modal="true" aria-labelledby="perkModalTitle">
-    <div style="text-align: center; margin-bottom: 0.8rem;">
+    <button class="onboarding__close" id="btnPerkTopClose" title="Close" style="position: absolute; top: 12px; right: 14px; font-size: 1.1rem; line-height: 1; padding: 0.3rem;">✕</button>
+    <div style="text-align: center; margin-bottom: 0.3rem; padding-top: 0.2rem;">
       <div class="perk-modal__badge" id="perkModalIcon">👑</div>
-      <h3 id="perkModalTitle" style="margin: 0.4rem 0 0.2rem; font-size: var(--step-1); color: var(--ink);">Milestone Reached!</h3>
+      <h3 id="perkModalTitle" style="margin: 0.3rem 0 0.15rem; font-size: var(--step-1); color: var(--ink);">Milestone Reached!</h3>
       <span class="perk-modal__subtitle" id="perkModalSubtitle">Perk Unlocked</span>
     </div>
 
@@ -961,8 +962,8 @@
       <!-- Injected dynamically based on milestone -->
     </div>
 
-    <div class="modal__actions" style="margin-top: 1.2rem; justify-content: center; gap: 0.6rem;">
-      <button class="btn btn--primary" id="btnPerkAction">
+    <div class="perk-modal__actions">
+      <button class="btn btn--primary" id="btnPerkAction" style="min-width: 170px;">
         <span class="btn__glow"></span><span id="btnPerkActionText">Equip Royal Gold Edition ✨</span>
       </button>
       <button class="btn btn--ghost" id="btnPerkClose">Close</button>

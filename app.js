@@ -2567,6 +2567,7 @@ function bind() {
 
   $('#btnToggleGoldTheme')?.addEventListener('click', toggleGoldTheme);
   $('#btnPerkClose')?.addEventListener('click', closeMilestonePerkModal);
+  $('#btnPerkTopClose')?.addEventListener('click', closeMilestonePerkModal);
   $('#btnPerkAction')?.addEventListener('click', () => {
     if (currentViewingPerkMilestone === 30) {
       toggleGoldTheme();
