@@ -1354,9 +1354,9 @@ function renderTriggerPlaybook() {
     if (!strat) return '';
     const tip = getDailyTriggerTip(tKey);
     return `
-      <div style="background:var(--bg-2); border:1px solid var(--stroke-hi); padding:0.65rem 0.85rem; border-radius:var(--radius); display:grid; gap:0.2rem;">
-        <strong style="color:var(--ink); font-size:var(--step--1);">${strat.title}</strong>
-        <p style="color:var(--ink-dim); font-size:0.8rem; margin:0; line-height:1.4;">${tip}</p>
+      <div class="trigger-card">
+        <strong class="trigger-card__title">${strat.title}</strong>
+        <p class="trigger-card__tip">${tip}</p>
       </div>
     `;
   }).join('');
@@ -1554,12 +1554,7 @@ function renderGreeting() {
 
   document.documentElement.setAttribute('data-user-gender', S.user.gender || 'him');
   document.documentElement.setAttribute('data-theme', S.user.theme || 'dark');
-  
-  if (streak >= 30) {
-    document.documentElement.setAttribute('data-theme-style', 'gold');
-  } else {
-    document.documentElement.removeAttribute('data-theme-style');
-  }
+  document.documentElement.removeAttribute('data-theme-style');
 }
 
 /* === Onboarding Controller ================================== */

@@ -1385,14 +1385,42 @@ html[data-theme="light"]:not([data-user-gender="her"]) body {
   color: #0f172a !important;
 }
 
-html[data-theme-style="gold"],
-:root[data-theme-style="gold"] {
-  --violet:      #f59e0b;
-  --violet-soft: #fbbf24;
-  --cyan:        #d97706;
-  --cyan-soft:   #fcd34d;
-  --bg:          #0f0d07;
-  --bg-2:        #1f1a0e;
+/* ── Trigger Playbook Cards ──────────────────────────────────── */
+.trigger-card {
+  background: var(--glass);
+  border: 1px solid var(--stroke-hi);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  display: grid;
+  gap: 0.25rem;
+  transition: all 0.2s var(--ease);
+}
+.trigger-card:hover {
+  border-color: var(--cyan-soft);
+  transform: translateY(-1px);
+}
+.trigger-card__title {
+  color: var(--ink);
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+.trigger-card__tip {
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+  margin: 0;
+  line-height: 1.45;
+}
+
+[data-theme="light"] .trigger-card {
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+[data-theme="light"] .trigger-card__title {
+  color: #0f172a;
+}
+[data-theme="light"] .trigger-card__tip {
+  color: #475569;
 }
 
 /* ── 14. Topbar Greeting & Header ────────────────────────────── */
