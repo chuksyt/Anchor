@@ -609,6 +609,17 @@
           </div>
         </button>
       </div>
+      <div id="goldEditionSettingBox" style="margin-top: 0.8rem; padding: 0.65rem 0.85rem; background: var(--glass); border: 1px solid var(--stroke-hi); border-radius: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <strong style="font-size: var(--step--1); display: flex; align-items: center; gap: 0.4rem; color: var(--ink);">
+            👑 30-Day Royal Gold Theme
+          </strong>
+          <span id="goldEditionStatusLbl" style="font-size: 0.76rem; color: var(--ink-dim);">Requires 30 days clean</span>
+        </div>
+        <button class="btn btn--primary" id="btnToggleGoldTheme" style="font-size: 0.78rem; padding: 0.35rem 0.75rem;">
+          <span id="btnToggleGoldText">Enable</span>
+        </button>
+      </div>
     </div>
 
     <!-- Urge Triggers -->
@@ -933,6 +944,28 @@
       <button class="btn btn--primary" id="btnConfirmSelectedBacklog">
         <span class="btn__glow"></span>Save & Confirm Checked Days
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Milestone Perk Celebration Modal ──────────────────────────── -->
+<div class="modal" id="milestonePerkModal" hidden style="z-index: 110;">
+  <div class="modal__card perk-modal__card" role="dialog" aria-modal="true" aria-labelledby="perkModalTitle">
+    <div style="text-align: center; margin-bottom: 0.8rem;">
+      <div class="perk-modal__badge" id="perkModalIcon">👑</div>
+      <h3 id="perkModalTitle" style="margin: 0.4rem 0 0.2rem; font-size: var(--step-1); color: var(--ink);">Milestone Reached!</h3>
+      <span class="perk-modal__subtitle" id="perkModalSubtitle">Perk Unlocked</span>
+    </div>
+
+    <div id="perkModalBody">
+      <!-- Injected dynamically based on milestone -->
+    </div>
+
+    <div class="modal__actions" style="margin-top: 1.2rem; justify-content: center; gap: 0.6rem;">
+      <button class="btn btn--primary" id="btnPerkAction">
+        <span class="btn__glow"></span><span id="btnPerkActionText">Equip Royal Gold Edition ✨</span>
+      </button>
+      <button class="btn btn--ghost" id="btnPerkClose">Close</button>
     </div>
   </div>
 </div>

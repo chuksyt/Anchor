@@ -26,6 +26,50 @@ const MILESTONE_NAMES = {
   365: 'A full year'
 };
 
+const MILESTONE_PERKS = {
+  7: {
+    id: 'day7',
+    badge: '🥉',
+    title: '7-Day Milestone: Momentum Builder',
+    subtitle: '1 Week Clean',
+    desc: 'You have cleared the acute withdrawal window. Your brain is resetting its automatic dopamine response triggers.',
+    perk: 'Unlocked: Detailed 24-Hour Slip & Urge Pattern Analytics and Deep Circuit Breaker Toolkit.'
+  },
+  14: {
+    id: 'day14',
+    badge: '🥈',
+    title: '14-Day Milestone: Cognitive Clarity',
+    subtitle: '2 Weeks Clean',
+    desc: 'Prefrontal cortex regulation is strengthening. Cravings are losing their compulsive grip.',
+    perk: 'Unlocked: Guided Coherence Respiration Engine and Emergency Audio Circuit Breakers.'
+  },
+  30: {
+    id: 'day30',
+    badge: '👑',
+    title: '30-Day Milestone: Royal Gold Edition',
+    subtitle: '1 Month Clean — Prestige Tier',
+    desc: 'A full month of continuous discipline and self-mastery. You have proven that impulse is no match for your resolve.',
+    perk: 'Unlocked: Prestige Royal Gold Theme & Golden Status Badge across the entire app!',
+    hasTheme: true
+  },
+  60: {
+    id: 'day60',
+    badge: '💎',
+    title: '60-Day Milestone: Iron Will',
+    subtitle: '2 Months Clean',
+    desc: 'Healthy baseline neural pathways have cemented. Identity shift from "trying to quit" to "someone who is free".',
+    perk: 'Unlocked: Advanced Relapse Prevention Matrix and Long-term Identity Anchor.'
+  },
+  90: {
+    id: 'day90',
+    badge: '🏆',
+    title: '90-Day Milestone: Dopamine Reboot Master',
+    subtitle: '3 Months Clean — The Complete Reboot',
+    desc: 'Full clinical dopamine reboot achieved. Androgen receptor density and cognitive drive restored to natural baseline.',
+    perk: 'Unlocked: Master Reboot Seal & Permanent Anchor Legend Status.'
+  }
+};
+
 const TRIGGER_STRATEGIES = {
   night: {
     title: 'Late night in bed 🌙',
@@ -165,6 +209,9 @@ function load() {
     S.user.triggers = S.user.trigger ? [S.user.trigger] : ['night'];
   }
   if (!S.user.theme) S.user.theme = 'dark';
+  if (!Array.isArray(S.seenPerks)) S.seenPerks = [];
+  if (typeof S.user.goldThemeUnlocked !== 'boolean') S.user.goldThemeUnlocked = false;
+  if (typeof S.user.goldThemeActive !== 'boolean') S.user.goldThemeActive = true;
   if (!S.partners) {
     S.partners = { direct: { visits: S.openDays?.length || 1, subs: S.user.unlocked ? 1 : 0 } };
   }
@@ -929,12 +976,34 @@ function renderMilestones() {
 
   MILESTONES.forEach((m) => {
     const isHit = currentStreak >= m;
+    const perk = MILESTONE_PERKS[m];
     const li = document.createElement('li');
     li.className = 'ms' + (isHit ? ' is-hit' : '') + (m === next ? ' is-next' : '');
+    
+    let perkBadgeHtml = '';
+    if (perk) {
+      perkBadgeHtml = isHit
+        ? `<button type="button" class="ms__perk-btn is-unlocked" data-perk-day="${m}" title="View Unlocked Perk">${perk.badge} Perk Active</button>`
+        : `<button type="button" class="ms__perk-btn is-locked" data-perk-day="${m}" title="Preview Perk">${perk.badge} Perk Info</button>`;
+    }
+
     li.innerHTML = `
       <span class="ms__dot"></span>
-      <span class="ms__name">${MILESTONE_NAMES[m]}</span>
+      <div class="ms__info">
+        <span class="ms__name">${MILESTONE_NAMES[m]}</span>
+        ${perkBadgeHtml}
+      </div>
       <span class="ms__days">${isHit ? '✓ achieved' : `day ${m}`}</span>`;
+    
+    if (perk) {
+      const pBtn = li.querySelector ? li.querySelector('.ms__perk-btn') : null;
+      if (pBtn) {
+        pBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openMilestonePerkModal(m);
+        });
+      }
+    }
     list.append(li);
   });
 }
@@ -1554,7 +1623,12 @@ function renderGreeting() {
 
   document.documentElement.setAttribute('data-user-gender', S.user.gender || 'him');
   document.documentElement.setAttribute('data-theme', S.user.theme || 'dark');
-  document.documentElement.removeAttribute('data-theme-style');
+  
+  if (S.user.goldThemeUnlocked && S.user.goldThemeActive) {
+    document.documentElement.setAttribute('data-theme-style', 'gold');
+  } else {
+    document.documentElement.removeAttribute('data-theme-style');
+  }
 }
 
 /* === Onboarding Controller ================================== */
@@ -2019,6 +2093,164 @@ function openSettings() {
   $$('.onboarding-option[data-set-trigger]').forEach((btn) => {
     btn.classList.toggle('is-selected', userTriggers.includes(btn.dataset.setTrigger));
   });
+
+  // Milestone Gold Edition Theme Controller inside Settings
+  const goldBox = $('#goldEditionSettingBox');
+  const goldLbl = $('#goldEditionStatusLbl');
+  const btnToggleGold = $('#btnToggleGoldTheme');
+  const btnToggleGoldText = $('#btnToggleGoldText');
+
+  const maxStreak = getActiveTracks().includes('nofap') ? cleanDays('nofap') : (getActiveTracks().length ? cleanDays(getActiveTracks()[0]) : 0);
+  const is30Hit = maxStreak >= 30 || S.user.goldThemeUnlocked;
+
+  if (is30Hit) {
+    S.user.goldThemeUnlocked = true;
+    if (goldLbl) goldLbl.textContent = S.user.goldThemeActive ? 'Active — Royal Gold Edition equipped' : 'Unlocked — Ready to equip';
+    if (btnToggleGold) {
+      btnToggleGold.disabled = false;
+      btnToggleGold.className = S.user.goldThemeActive ? 'btn btn--ghost' : 'btn btn--primary';
+      if (btnToggleGoldText) btnToggleGoldText.textContent = S.user.goldThemeActive ? 'Disable' : 'Enable';
+    }
+  } else {
+    if (goldLbl) goldLbl.textContent = `Locked — Reach 30 days clean (${maxStreak}/30d)`;
+    if (btnToggleGold) {
+      btnToggleGold.disabled = true;
+      btnToggleGold.className = 'btn btn--ghost';
+      if (btnToggleGoldText) btnToggleGoldText.textContent = 'Locked 🔒';
+    }
+  }
+}
+
+/* === Milestone Perk Celebration Controller =================== */
+let currentViewingPerkMilestone = 30;
+
+function openMilestonePerkModal(m, autoCelebrate = false) {
+  const modal = $('#milestonePerkModal');
+  if (!modal) return;
+
+  const perk = MILESTONE_PERKS[m] || {
+    badge: '🏆',
+    title: `Day ${m} Milestone`,
+    subtitle: `${m} Days Clean`,
+    desc: 'You have demonstrated resilience, consistency, and commitment to your highest self.',
+    perk: 'Unlocked: Next tier habit momentum and cognitive clarity.'
+  };
+
+  currentViewingPerkMilestone = m;
+
+  const active = getActiveTracks();
+  const currentStreak = active.includes('nofap') ? cleanDays('nofap') : (active.length > 0 ? cleanDays(active[0]) : 0);
+  const isAchieved = currentStreak >= m || (m === 30 && S.user.goldThemeUnlocked);
+
+  $('#perkModalIcon').textContent = perk.badge;
+  $('#perkModalTitle').textContent = perk.title;
+  $('#perkModalSubtitle').textContent = isAchieved ? `${perk.subtitle} • ✓ Achieved` : `${perk.subtitle} • 🔒 Locked (${currentStreak}/${m}d)`;
+
+  const bodyEl = $('#perkModalBody');
+  if (bodyEl) {
+    bodyEl.innerHTML = `
+      <p style="font-size: var(--step-0); color: var(--ink-dim); margin-top: 0.4rem; line-height: 1.55;">
+        ${perk.desc}
+      </p>
+      <div class="perk-card-box">
+        <strong style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cyan-soft);">
+          ✨ Milestone Reward & Perk
+        </strong>
+        <div class="perk-highlight">
+          <span>${perk.badge}</span>
+          <span>${perk.perk}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const actionBtn = $('#btnPerkAction');
+  const actionText = $('#btnPerkActionText');
+  
+  if (m === 30) {
+    actionBtn.hidden = false;
+    if (isAchieved) {
+      actionText.textContent = S.user.goldThemeActive ? 'Switch to Standard Theme' : 'Equip Royal Gold Edition ✨';
+      actionBtn.className = S.user.goldThemeActive ? 'btn btn--ghost' : 'btn btn--primary';
+      actionBtn.disabled = false;
+    } else {
+      actionText.textContent = `Earn at 30 Days (${currentStreak}/30d)`;
+      actionBtn.className = 'btn btn--ghost';
+      actionBtn.disabled = true;
+    }
+  } else {
+    if (isAchieved) {
+      actionBtn.hidden = false;
+      actionText.textContent = 'Perk Active & In Use ✓';
+      actionBtn.className = 'btn btn--primary';
+      actionBtn.disabled = false;
+    } else {
+      actionBtn.hidden = true;
+    }
+  }
+
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  if (autoCelebrate || isAchieved) {
+    try {
+      const rect = modal.getBoundingClientRect();
+      const originX = rect.left + rect.width / 2;
+      const originY = rect.top + rect.height / 3;
+      for (let i = 0; i < 28; i++) {
+        const angle = (i / 28) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
+        const dist = 60 + Math.random() * 120;
+        const spark = document.createElement('div');
+        spark.className = 'spark';
+        spark.style.left = `${originX}px`;
+        spark.style.top = `${originY}px`;
+        spark.style.background = m === 30 ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : 'linear-gradient(135deg, #06b6d4, #818cf8)';
+        spark.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+        spark.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+        document.body.append(spark);
+        setTimeout(() => spark.remove(), 1200);
+      }
+    } catch {}
+  }
+}
+
+function closeMilestonePerkModal() {
+  const modal = $('#milestonePerkModal');
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function toggleGoldTheme() {
+  const active = getActiveTracks();
+  const streak = active.includes('nofap') ? cleanDays('nofap') : (active.length ? cleanDays(active[0]) : 0);
+  if (streak < 30 && !S.user.goldThemeUnlocked) {
+    toast('Royal Gold Theme unlocks at 30 clean days! 🔒');
+    return;
+  }
+  S.user.goldThemeUnlocked = true;
+  S.user.goldThemeActive = !S.user.goldThemeActive;
+  save();
+  renderGreeting();
+  renderMilestones();
+  if (!$('#settingsModal').hidden) openSettings();
+  toast(S.user.goldThemeActive ? '👑 Royal Gold Edition equipped!' : 'Switched to Standard theme');
+  closeMilestonePerkModal();
+}
+
+function checkMilestonePerkCelebration() {
+  const active = getActiveTracks();
+  const streak = active.includes('nofap') ? cleanDays('nofap') : (active.length > 0 ? cleanDays(active[0]) : 0);
+  if (!Array.isArray(S.seenPerks)) S.seenPerks = [];
+
+  if (streak >= 30) {
+    S.user.goldThemeUnlocked = true;
+    if (!S.seenPerks.includes('day30')) {
+      S.seenPerks.push('day30');
+      S.user.goldThemeActive = true;
+      save();
+      setTimeout(() => openMilestonePerkModal(30, true), 400);
+    }
+  }
 }
 
 function closeSettings() {
@@ -2329,7 +2561,21 @@ function bind() {
     if (!$('#modal').hidden) closeModal();
     else if (!$('#dayLogModal').hidden) closeDayLogModal();
     else if (!$('#backlogModal').hidden) closeBacklogModal();
+    else if (!$('#milestonePerkModal').hidden) closeMilestonePerkModal();
     else if (!$('#urge').hidden) closeUrge();
+  });
+
+  $('#btnToggleGoldTheme')?.addEventListener('click', toggleGoldTheme);
+  $('#btnPerkClose')?.addEventListener('click', closeMilestonePerkModal);
+  $('#btnPerkAction')?.addEventListener('click', () => {
+    if (currentViewingPerkMilestone === 30) {
+      toggleGoldTheme();
+    } else {
+      closeMilestonePerkModal();
+    }
+  });
+  $('#milestonePerkModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'milestonePerkModal') closeMilestonePerkModal();
   });
 
   $('#btnFloatUrge')?.addEventListener('click', openUrge);
@@ -2418,6 +2664,7 @@ renderHeroLine();
 startField();
 startReveal();
 registerSW();
+checkMilestonePerkCelebration();
 
 if (!S.user.onboarded) {
   openOnboarding(1);
