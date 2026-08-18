@@ -1788,17 +1788,83 @@ function isTrialEnded() {
   return diffDays(S.firstRun, today()) >= 7;
 }
 
+/* === Currency & Internationalization System ================ */
+const CURRENCIES = {
+  NGN: {
+    symbol: '₦',
+    amount: '2,000',
+    display: '₦2,000',
+    name: 'NGN'
+  },
+  USD: {
+    symbol: '$',
+    amount: '2.99',
+    display: '$2.99',
+    name: 'USD'
+  },
+  GBP: {
+    symbol: '£',
+    amount: '2.49',
+    display: '£2.49',
+    name: 'GBP'
+  }
+};
+
+function detectUserCurrency() {
+  if (S.user.currency && CURRENCIES[S.user.currency]) {
+    return S.user.currency;
+  }
+  try {
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
+    if (tz.includes('lagos') || tz.includes('accra') || tz.includes('nairobi') || tz.includes('cairo') || tz.includes('africa')) {
+      return 'NGN';
+    }
+    if (tz.includes('london') || tz.includes('europe/london') || tz.includes('belfast')) {
+      return 'GBP';
+    }
+  } catch {}
+  return 'USD';
+}
+
+function renderSubPrice() {
+  const currCode = S.user.currency || detectUserCurrency();
+  const c = CURRENCIES[currCode] || CURRENCIES.NGN;
+  
+  const priceDisplay = $('#subPriceDisplay');
+  if (priceDisplay) {
+    priceDisplay.innerHTML = `${c.display} <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span>`;
+  }
+
+  const payText = $('#btnPayText');
+  if (payText) {
+    payText.textContent = `Get Passcode via WhatsApp (${c.display})`;
+  }
+
+  const name = S.user.name ? encodeURIComponent(S.user.name) : 'User';
+  const ref = S.user.referrer ? encodeURIComponent(S.user.referrer) : 'direct';
+  const waUrl = `https://wa.me/2348021184502?text=Hello!%20I%20am%20${name}%20(Ref:%20${ref}).%20I%20want%20to%20get%20my%20Anchor%20Monthly%20Passcode%20(${encodeURIComponent(c.display)})`;
+  const payBtn = $('#btnPayWhatsApp');
+  if (payBtn) payBtn.href = waUrl;
+
+  $$('.curr-btn').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.currency === currCode);
+  });
+}
+
+function setCurrency(code) {
+  if (CURRENCIES[code]) {
+    S.user.currency = code;
+    save();
+    renderSubPrice();
+  }
+}
+
 function openSubModal() {
   const modal = $('#subModal');
   if (!modal) return;
   modal.hidden = false;
   document.body.style.overflow = 'hidden';
-
-  const name = S.user.name ? encodeURIComponent(S.user.name) : 'User';
-  const ref = S.user.referrer ? encodeURIComponent(S.user.referrer) : 'direct';
-  const waUrl = `https://wa.me/2348021184502?text=Hello!%20I%20am%20${name}%20(Ref:%20${ref}).%20I%20want%20to%20get%20my%20Anchor%20Monthly%20Passcode%20(₦2,000)`;
-  const payBtn = $('#btnPayWhatsApp');
-  if (payBtn) payBtn.href = waUrl;
+  renderSubPrice();
 }
 
 function closeSubModal() {
@@ -2577,6 +2643,10 @@ function bind() {
   });
   $('#milestonePerkModal')?.addEventListener('click', (e) => {
     if (e.target.id === 'milestonePerkModal') closeMilestonePerkModal();
+  });
+
+  $$('.curr-btn').forEach((btn) => {
+    btn.addEventListener('click', () => setCurrency(btn.dataset.currency));
   });
 
   $('#btnFloatUrge')?.addEventListener('click', openUrge);

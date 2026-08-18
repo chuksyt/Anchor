@@ -746,13 +746,22 @@
     <span class="lock-badge">🔒 7-Day Free Trial Ended — Full Access Locked</span>
     <h3>Unlock Full Anchor Access</h3>
     <p>Your 7-day free trial has completed! You've built 1 week of clean momentum. Unlock unlimited streak tracking, Urge Mode, relapse notes, and milestone rewards.</p>
-    <div>
-      <div class="price-pill">₦2,000 <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span></div>
+    <div class="currency-switch-wrap">
+      <span class="currency-switch-label">Select Currency</span>
+      <div class="currency-switch-btns" role="tablist" aria-label="Select pricing currency">
+        <button type="button" class="curr-btn is-active" data-currency="NGN">🇳🇬 ₦2,000 NGN</button>
+        <button type="button" class="curr-btn" data-currency="USD">🌐 $2.99 USD</button>
+        <button type="button" class="curr-btn" data-currency="GBP">🇬🇧 £2.49 GBP</button>
+      </div>
+    </div>
+
+    <div style="margin-top: 0.3rem;">
+      <div class="price-pill" id="subPriceDisplay">₦2,000 <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span></div>
       <p class="price-sub">Unlock Unlimited Tracking & Full Access</p>
     </div>
     <div style="display:grid; gap:0.6rem; text-align:left;">
       <a id="btnPayWhatsApp" href="https://wa.me/2348021184502?text=Hello!%20I%20want%20to%20get%20my%20Anchor%20Monthly%20Passcode%20(₦2,000)" target="_blank" rel="noopener" class="btn btn--primary" style="text-align:center; justify-content:center; text-decoration:none;">
-        <span class="btn__glow"></span>Get Passcode via WhatsApp (₦2,000)
+        <span class="btn__glow"></span><span id="btnPayText">Get Passcode via WhatsApp (₦2,000)</span>
       </a>
       <div style="display:flex; gap:0.5rem; margin-top:0.4rem;">
         <input type="text" id="subKeyInput" class="input-field" placeholder="Enter 6-digit Passcode" style="text-transform:uppercase;" />
