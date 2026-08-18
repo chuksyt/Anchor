@@ -1785,7 +1785,7 @@ function finishTour() {
 
 /* === Subscription Trial & Lock ============================= */
 function isTrialEnded() {
-  return diffDays(S.firstRun, today()) >= 2;
+  return diffDays(S.firstRun, today()) >= 7;
 }
 
 function openSubModal() {
