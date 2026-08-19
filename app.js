@@ -1948,7 +1948,8 @@ function renderGreeting() {
 
   const hr = new Date().getHours();
   const timeWord = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
-  greetingEl.textContent = name ? `${timeWord}, ${name}. Stay anchored.` : `${timeWord}. Stay anchored.`;
+  const greetingText = name ? `${timeWord}, ${name}. Stay anchored.` : `${timeWord}. Stay anchored.`;
+  greetingEl.innerHTML = `<span class="brand__mark" aria-hidden="true" style="width:8px; height:8px; flex-shrink:0; opacity:0.85;"></span> <span>${greetingText}</span>`;
 }
 
 function renderLog() {
