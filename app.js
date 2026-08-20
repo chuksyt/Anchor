@@ -240,6 +240,28 @@ function getTrackLabel(id) {
   return meta.name;
 }
 
+function getHabitActionLabel(id) {
+  if (id === 'porn') return S?.user?.gender === 'her' ? 'Stayed away from erotica & porn' : 'Stayed away from porn';
+  if (id === 'nofap') return S?.user?.gender === 'her' ? 'Maintained self-love & balance' : 'Stayed away from masturbation';
+  if (id === 'paidsex') return S?.user?.gender === 'her' ? 'Maintained healthy boundaries' : 'Stayed away from paid sex/hookups';
+  if (id === 'gambling') return 'Stayed away from gambling';
+  if (id === 'smoking') return 'Stayed away from smoking/vaping';
+  if (id === 'alcohol') return 'Stayed away from alcohol';
+  if (id === 'junkfood') return 'Stayed away from junk food';
+  return `Stayed away from ${getTrackLabel(id)}`;
+}
+
+function getHabitResetLabel(id) {
+  if (id === 'porn') return 'Reset Porn';
+  if (id === 'nofap') return 'Reset Masturbation';
+  if (id === 'paidsex') return 'Reset Paid Sex / Hookups';
+  if (id === 'gambling') return 'Reset Gambling';
+  if (id === 'smoking') return 'Reset Smoking';
+  if (id === 'alcohol') return 'Reset Alcohol';
+  if (id === 'junkfood') return 'Reset Junk Food';
+  return `Reset ${getTrackLabel(id)}`;
+}
+
 function getHabitSvg(id) {
   return SVGS[id] || `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>`;
 }
@@ -1294,7 +1316,7 @@ function renderToday() {
         <span class="check__text">
           <strong style="display:flex; align-items:center; gap:0.4rem;">
             <span style="color:var(--cyan-soft); display:inline-flex;">${iconSvg}</span>
-            Stayed away from ${label}
+            ${getHabitActionLabel(trackId)}
           </strong>
           <small>${meta.desc || 'Zero engagement, maintained discipline.'}</small>
         </span>
@@ -1305,7 +1327,7 @@ function renderToday() {
         const rBtn = document.createElement('button');
         rBtn.className = 'btn btn--danger-ghost';
         rBtn.dataset.relapse = trackId;
-        rBtn.textContent = `Reset ${label}`;
+        rBtn.textContent = getHabitResetLabel(trackId);
         rBtn.addEventListener('click', () => confirmRelapse(trackId));
         resetBtnsContainer.append(rBtn);
       }
@@ -2476,6 +2498,8 @@ function openDayLogModal(dateStr) {
     const iconSvg = getHabitSvg(trackId);
     const isClean = !S.relapses.some(r => r.date === dateStr && r.track === trackId);
 
+    const displayTitle = mode === 'abstinence' ? getHabitActionLabel(trackId) : `${label} (${mode})`;
+
     const labelEl = document.createElement('label');
     labelEl.className = 'check';
     labelEl.innerHTML = `
@@ -2484,7 +2508,7 @@ function openDayLogModal(dateStr) {
       <span class="check__text">
         <strong style="display:flex; align-items:center; gap:0.4rem;">
           <span style="color:var(--cyan-soft);">${iconSvg}</span>
-          ${label} (${mode})
+          ${displayTitle}
         </strong>
       </span>
     `;
