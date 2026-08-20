@@ -2529,13 +2529,62 @@ function toast(msg) {
 
 /* === 14. Event Bindings ====================================== */
 function bind() {
-  // Brand Click -> Only opens welcome landing if NOT onboarded! If onboarded, smoothly scrolls to top of dashboard.
-  $('#btnBrandHome')?.addEventListener('click', () => {
+  // Brand Click -> 5 rapid clicks triggers Secret Admin Panel!
+  const handleBrandClick = () => {
+    brandClickCount++;
+    if (brandClickTimer) clearTimeout(brandClickTimer);
+    brandClickTimer = setTimeout(() => { brandClickCount = 0; }, 3000);
+
+    if (brandClickCount >= 5) {
+      brandClickCount = 0;
+      openAdmin();
+      return;
+    }
+
     if (!S.user.onboarded) {
       openWelcomeLanding();
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      toast('Anchor Dashboard');
+    }
+  };
+
+  $('#btnBrandHome')?.addEventListener('click', handleBrandClick);
+  $$('.brand').forEach((el) => el.addEventListener('click', handleBrandClick));
+  $$('.brand__mark').forEach((el) => el.addEventListener('click', handleBrandClick));
+  $$('.brand__name').forEach((el) => el.addEventListener('click', handleBrandClick));
+  $$('.welcome-landing__brand-badge').forEach((el) => el.addEventListener('click', handleBrandClick));
+  $$('.onboarding__brand').forEach((el) => el.addEventListener('click', handleBrandClick));
+
+  // Subscription Lock Modal Handlers
+  $('#btnSubClose')?.addEventListener('click', closeSubModal);
+  $('#btnSubUnlock')?.addEventListener('click', () => {
+    const input = $('#subKeyInput');
+    if (input) unlockApp(input.value);
+  });
+  $$('.curr-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setCurrency(btn.dataset.currency);
+    });
+  });
+
+  // Admin Modal Handlers
+  $('#btnAdminClose')?.addEventListener('click', closeAdmin);
+  $('#btnGenPasscode')?.addEventListener('click', generatePasscode);
+
+  // Partner Portal Modal Handlers
+  $('#btnPartnerClose')?.addEventListener('click', closePartnerModal);
+  $('#btnCheckPartnerStats')?.addEventListener('click', () => {
+    const input = $('#partnerCodeInput');
+    if (input) fetchPartnerStats(input.value);
+  });
+  $('#btnCopyPartnerUrl')?.addEventListener('click', () => {
+    const input = $('#partnerShareUrl');
+    if (input && input.value) {
+      navigator.clipboard.writeText(input.value).then(() => toast('Partner link copied!')).catch(() => {
+        input.select();
+        document.execCommand('copy');
+        toast('Partner link copied!');
+      });
     }
   });
 
@@ -3136,6 +3185,392 @@ function bind() {
   });
 }
 
+
+/* === 14b. Referral & Referral Tracking Engine ================ */
+function checkReferral() {
+  const params = new URLSearchParams(window.location.search);
+  let ref = (params.get('ref') || params.get('code') || S.user.referrer || 'direct').toLowerCase().trim();
+  
+  if (S.deletedPartners && S.deletedPartners.includes(ref)) {
+    ref = 'direct';
+  }
+
+  S.user.referrer = ref;
+  if (!S.partners) S.partners = {};
+  if (!S.partners[ref]) {
+    S.partners[ref] = { visits: 0, subs: 0 };
+  }
+  S.partners[ref].visits = (S.partners[ref].visits || 0) + 1;
+  save();
+
+  if (db && ref !== 'direct') {
+    try {
+      db.collection('deleted_referrals').doc(ref).get().then((doc) => {
+        if (doc.exists && doc.data()?.disabled) {
+          if (!S.deletedPartners) S.deletedPartners = [];
+          if (!S.deletedPartners.includes(ref)) S.deletedPartners.push(ref);
+          delete S.partners[ref];
+          S.user.referrer = 'direct';
+          save();
+          return;
+        }
+        db.collection('referrals').doc(ref).set({
+          visits: firebase.firestore.FieldValue.increment(1),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }).catch(() => {});
+    } catch {}
+  }
+
+  // If admin parameter is in URL, navigate to standalone admin page
+  if (params.has('admin')) {
+    window.location.href = 'admin.html';
+    return;
+  }
+
+  // If partner parameter is in URL, auto-open partner portal
+  if (params.has('partner')) {
+    openPartnerModal(params.get('partner') || '');
+  }
+}
+
+/* === 14c. Subscription 7-Day Free Trial & Currency System === */
+const CURRENCIES = {
+  NGN: { symbol: '₦', amount: '2,000', display: '₦2,000', name: 'NGN' },
+  USD: { symbol: '$', amount: '2.99', display: '$2.99', name: 'USD' },
+  GBP: { symbol: '£', amount: '2.49', display: '£2.49', name: 'GBP' }
+};
+
+function isTrialEnded() {
+  const start = S.firstRun || S.user?.joinedDate || today();
+  return diffDays(start, today()) >= 7;
+}
+
+function detectUserCurrency() {
+  if (S.user.currency && CURRENCIES[S.user.currency]) {
+    return S.user.currency;
+  }
+  try {
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
+    if (tz.includes('lagos') || tz.includes('accra') || tz.includes('nairobi') || tz.includes('cairo') || tz.includes('africa')) {
+      return 'NGN';
+    }
+    if (tz.includes('london') || tz.includes('europe/london') || tz.includes('belfast')) {
+      return 'GBP';
+    }
+  } catch {}
+  return 'USD';
+}
+
+function renderSubPrice() {
+  const currCode = S.user.currency || detectUserCurrency();
+  const c = CURRENCIES[currCode] || CURRENCIES.NGN;
+  
+  const priceDisplay = $('#subPriceDisplay');
+  if (priceDisplay) {
+    priceDisplay.innerHTML = `${c.display} <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span>`;
+  }
+
+  const payText = $('#btnPayText');
+  if (payText) {
+    payText.textContent = `Get Passcode via WhatsApp (${c.display})`;
+  }
+
+  const name = S.user.name ? encodeURIComponent(S.user.name) : 'User';
+  const ref = S.user.referrer ? encodeURIComponent(S.user.referrer) : 'direct';
+  const waUrl = `https://wa.me/2348021184502?text=Hello!%20I%20am%20${name}%20(Ref:%20${ref}).%20I%20want%20to%20get%20my%20Anchor%20Monthly%20Passcode%20(${encodeURIComponent(c.display)})`;
+  const payBtn = $('#btnPayWhatsApp');
+  if (payBtn) payBtn.href = waUrl;
+
+  $$('.curr-btn').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.currency === currCode);
+  });
+}
+
+function setCurrency(code) {
+  if (CURRENCIES[code]) {
+    S.user.currency = code;
+    save();
+    renderSubPrice();
+  }
+}
+
+function openSubModal() {
+  const modal = $('#subModal');
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  renderSubPrice();
+}
+
+function closeSubModal() {
+  $('#subModal').hidden = true;
+  document.body.style.overflow = '';
+}
+
+function unlockApp(key) {
+  const cleanKey = (key || '').toUpperCase().trim();
+  if (cleanKey.length >= 4) {
+    S.user.unlocked = true;
+    S.user.unlockKey = cleanKey;
+    const ref = S.user.referrer || 'direct';
+    if (!S.partners) S.partners = {};
+    if (!S.partners[ref]) S.partners[ref] = { visits: 1, subs: 0 };
+    S.partners[ref].subs = (S.partners[ref].subs || 0) + 1;
+    save();
+
+    if (db) {
+      try {
+        db.collection('referrals').doc(ref.toLowerCase()).set({
+          subs: firebase.firestore.FieldValue.increment(1),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch {}
+    }
+
+    closeSubModal();
+    toast('Full Access Unlocked!');
+    renderAll();
+    return true;
+  }
+  toast('Invalid passcode. Check your WhatsApp confirmation.');
+  return false;
+}
+
+function checkSubLock(actionCallback) {
+  if (!isTrialEnded() || S.user.unlocked) {
+    actionCallback();
+  } else {
+    openSubModal();
+  }
+}
+
+/* === 14d. Secret Admin Dashboard ============================ */
+function openAdmin() {
+  const pin = (prompt('Enter Admin Master PIN:') || '').trim().toLowerCase();
+  const validPins = ['4397'];
+  if (S.user?.adminPin) validPins.push(String(S.user.adminPin).toLowerCase());
+  
+  if (!validPins.includes(pin)) {
+    toast('Invalid Admin PIN.');
+    return;
+  }
+  $('#adminModal').hidden = false;
+  document.body.style.overflow = 'hidden';
+  renderAdminTable();
+}
+
+function closeAdmin() {
+  $('#adminModal').hidden = true;
+  document.body.style.overflow = '';
+}
+
+function deletePartner(code) {
+  const cleanCode = (code || '').toLowerCase().trim();
+  if (!cleanCode) return;
+  
+  if (cleanCode === 'direct') {
+    toast('Cannot delete default "direct" channel.');
+    return;
+  }
+
+  if (!confirm(`Delete partner code "${cleanCode.toUpperCase()}"? Analytics & payouts for this code will be permanently disabled.`)) {
+    return;
+  }
+
+  if (S.partners && S.partners[cleanCode]) {
+    delete S.partners[cleanCode];
+  }
+
+  if (!Array.isArray(S.deletedPartners)) S.deletedPartners = [];
+  if (!S.deletedPartners.includes(cleanCode)) {
+    S.deletedPartners.push(cleanCode);
+  }
+  save();
+
+  if (db) {
+    try {
+      db.collection('referrals').doc(cleanCode).delete();
+      db.collection('deleted_referrals').doc(cleanCode).set({
+        disabled: true,
+        deletedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (e) {}
+  }
+
+  toast(`Partner code "${cleanCode.toUpperCase()}" deleted.`);
+  updateAdminUI();
+}
+
+function renderAdminTable() {
+  if (!S.partners) S.partners = { direct: { visits: 1, subs: 0 } };
+  
+  if (db) {
+    try {
+      db.collection('referrals').onSnapshot((snapshot) => {
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const code = doc.id;
+          if (S.deletedPartners && S.deletedPartners.includes(code)) return;
+          if (!S.partners[code]) S.partners[code] = { visits: 0, subs: 0 };
+          if (data.visits) S.partners[code].visits = data.visits;
+          if (data.subs) S.partners[code].subs = data.subs;
+        });
+        updateAdminUI();
+      }, () => updateAdminUI());
+    } catch {
+      updateAdminUI();
+    }
+  } else {
+    updateAdminUI();
+  }
+}
+
+function updateAdminUI() {
+  let totalVisits = 0, totalSubs = 0;
+  if (S.partners) {
+    Object.entries(S.partners).forEach(([code, p]) => {
+      if (S.deletedPartners && S.deletedPartners.includes(code)) return;
+      totalVisits += p.visits || 0;
+      totalSubs += p.subs || 0;
+    });
+  }
+
+  const grossRev = totalSubs * 2000;
+  const netProfit = grossRev * 0.5;
+
+  if ($('#adminTotalVisits')) $('#adminTotalVisits').textContent = String(totalVisits);
+  if ($('#adminTotalSubs')) $('#adminTotalSubs').textContent = String(totalSubs);
+  if ($('#adminTotalRev')) $('#adminTotalRev').textContent = `₦${grossRev.toLocaleString()}`;
+  if ($('#adminNetProfit')) $('#adminNetProfit').textContent = `₦${netProfit.toLocaleString()}`;
+
+  const tbody = $('#adminPartnerTableBody');
+  if (!tbody) return;
+
+  const validEntries = Object.entries(S.partners || {}).filter(([code]) => {
+    return !S.deletedPartners || !S.deletedPartners.includes(code);
+  });
+
+  const rows = validEntries.map(([code, p]) => {
+    const pRev = (p.subs || 0) * 2000;
+    const pPayout = pRev * 0.5;
+    const deleteBtn = code !== 'direct'
+      ? `<button class="btn-delete-partner" data-delete-partner="${code}" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); color:#f87171; cursor:pointer; font-size:0.75rem; padding:0.25rem 0.5rem; border-radius:var(--radius); font-weight:600;" title="Delete Partner Code">Delete</button>`
+      : `<span style="color:var(--ink-faint); font-size:0.75rem;">Default</span>`;
+    return `
+      <tr>
+        <td><strong>${code.toUpperCase()}</strong></td>
+        <td>${p.visits || 0}</td>
+        <td>${p.subs || 0}</td>
+        <td>₦${pRev.toLocaleString()}</td>
+        <td>₦${pPayout.toLocaleString()}</td>
+        <td style="text-align:right;">${deleteBtn}</td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = rows.join('') || '<tr><td colspan="6">No partner traffic logged yet.</td></tr>';
+
+  $$('.btn-delete-partner').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const code = e.currentTarget.dataset.deletePartner;
+      deletePartner(code);
+    });
+  });
+}
+
+function generatePasscode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = 'ANC-';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  const field = $('#adminGenKey');
+  if (field) field.value = code;
+  toast(`Passcode generated: ${code}`);
+}
+
+/* === 14e. Dedicated Partner Portal Controller =============== */
+let currentPartnerCode = '';
+
+function openPartnerModal(code = '') {
+  const modal = $('#partnerModal');
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  const cleanCode = (code || '').toLowerCase().trim();
+  if (cleanCode) {
+    const input = $('#partnerCodeInput');
+    if (input) input.value = cleanCode;
+    fetchPartnerStats(cleanCode);
+  } else {
+    const promptBlock = $('#partnerCodePromptBlock');
+    const statsBlock = $('#partnerStatsBlock');
+    if (promptBlock) promptBlock.hidden = false;
+    if (statsBlock) statsBlock.hidden = true;
+  }
+}
+
+function closePartnerModal() {
+  const modal = $('#partnerModal');
+  if (modal) modal.hidden = true;
+  if ($('#settingsModal') && !$('#settingsModal').hidden) {
+    document.body.style.overflow = 'hidden';
+  } else {
+    document.body.style.overflow = '';
+  }
+}
+
+function fetchPartnerStats(code) {
+  const cleanCode = (code || '').toLowerCase().trim();
+  if (!cleanCode) {
+    toast('Please enter your referral code.');
+    return;
+  }
+
+  if (S.deletedPartners && S.deletedPartners.includes(cleanCode)) {
+    toast('This partner referral code has been deactivated by Admin.');
+    const promptBlock = $('#partnerCodePromptBlock');
+    const statsBlock = $('#partnerStatsBlock');
+    if (promptBlock) promptBlock.hidden = false;
+    if (statsBlock) statsBlock.hidden = true;
+    return;
+  }
+
+  currentPartnerCode = cleanCode;
+  const activeCodeEl = $('#partnerActiveCode');
+  if (activeCodeEl) activeCodeEl.textContent = cleanCode.toUpperCase();
+  const shareUrl = `${window.location.origin}${window.location.pathname}?ref=${cleanCode}`;
+  const shareUrlInput = $('#partnerShareUrl');
+  if (shareUrlInput) shareUrlInput.value = shareUrl;
+
+  const renderStats = (visits, subs) => {
+    if ($('#partnerVisits')) $('#partnerVisits').textContent = String(visits || 0);
+    if ($('#partnerSubs')) $('#partnerSubs').textContent = String(subs || 0);
+    const payout = (subs || 0) * 1000; // 50% of ₦2,000
+    if ($('#partnerPayout')) $('#partnerPayout').textContent = `₦${payout.toLocaleString()}`;
+    if ($('#partnerCodePromptBlock')) $('#partnerCodePromptBlock').hidden = true;
+    if ($('#partnerStatsBlock')) $('#partnerStatsBlock').hidden = false;
+  };
+
+  const localVisits = S.partners?.[cleanCode]?.visits || 0;
+  const localSubs = S.partners?.[cleanCode]?.subs || 0;
+  renderStats(localVisits, localSubs);
+
+  if (db) {
+    try {
+      db.collection('referrals').doc(cleanCode).onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          renderStats(data.visits || 0, data.subs || 0);
+        }
+      }, () => {});
+    } catch {}
+  }
+}
+
+
 /* === 15. Ambient Particle Field ============================== */
 function startField() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -3201,6 +3636,7 @@ function registerSW() {
 /* -- Boot ----------------------------------------------------- */
 load();
 initFirebase();
+checkReferral();
 registerVisit();
 bind();
 renderAll();
@@ -3209,6 +3645,11 @@ startField();
 startReveal();
 registerSW();
 initWaveCanvas();
+
+// Check 7-Day Subscription Free Trial
+if (S.user.onboarded && isTrialEnded() && !S.user.unlocked) {
+  openSubModal();
+}
 
 // Show Welcome Landing if user is not onboarded
 if (!S.user.onboarded) {

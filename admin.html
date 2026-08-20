@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#07080f" />
+<title>Anchor — Master Admin Portal</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="manifest" href="manifest.webmanifest" />
+<!-- Firebase Web SDK (Compat v10) -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<style>
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg, #07080f);
+    color: var(--ink, #f1f5f9);
+    font-family: var(--font, system-ui, sans-serif);
+    margin: 0;
+    padding: 0;
+  }
+  .admin-page-wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 1.5rem 1rem 3rem;
+    box-sizing: border-box;
+  }
+  .admin-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding-bottom: 1.2rem;
+    border-bottom: 1px solid var(--stroke, rgba(255,255,255,0.08));
+    margin-bottom: 1.5rem;
+  }
+  .admin-badge-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #10b981;
+  }
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulseLive 2s infinite ease-in-out;
+  }
+  @keyframes pulseLive {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+  }
+  .admin-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.8rem;
+  }
+  .admin-kpi-card {
+    background: var(--glass, rgba(15, 23, 42, 0.65));
+    border: 1px solid var(--stroke, rgba(255,255,255,0.08));
+    border-radius: var(--radius, 12px);
+    padding: 1.2rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: transform 0.2s ease, border-color 0.2s ease;
+  }
+  .admin-kpi-card:hover {
+    border-color: var(--cyan, #22d3ee);
+    transform: translateY(-2px);
+  }
+  .admin-kpi-label {
+    font-size: 0.78rem;
+    color: var(--ink-faint, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .admin-kpi-val {
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 800;
+    color: var(--cyan-soft, #67e8f9);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .admin-section {
+    background: var(--glass, rgba(15, 23, 42, 0.65));
+    border: 1px solid var(--stroke, rgba(255,255,255,0.08));
+    border-radius: var(--radius, 12px);
+    padding: 1.4rem;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .admin-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-bottom: 1.2rem;
+  }
+  .admin-section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--ink, #f1f5f9);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .admin-search-input {
+    max-width: 260px;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.82rem;
+  }
+  .admin-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+    text-align: left;
+  }
+  .admin-data-table th, .admin-data-table td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid var(--stroke, rgba(255,255,255,0.08));
+  }
+  .admin-data-table th {
+    color: var(--ink-faint, #64748b);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+  }
+  .admin-data-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .badge-code {
+    font-family: var(--mono, monospace);
+    font-weight: 700;
+    color: var(--cyan, #22d3ee);
+    background: rgba(34, 211, 238, 0.08);
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+  }
+  .auth-gate-card {
+    max-width: 400px;
+    width: 100%;
+    margin: 12vh auto 0;
+    padding: 2rem 1.8rem;
+    background: var(--glass, rgba(15, 23, 42, 0.85));
+    border: 1px solid var(--stroke, rgba(255,255,255,0.12));
+    border-radius: var(--radius, 14px);
+    text-align: center;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  }
+  .passcode-box {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 0.8rem 1rem;
+    border-radius: var(--radius, 8px);
+    border: 1px solid var(--stroke, rgba(255,255,255,0.08));
+  }
+  .passcode-display {
+    font-family: var(--mono, monospace);
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #10b981;
+    letter-spacing: 0.1em;
+    flex: 1;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="field" aria-hidden="true"></canvas>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ── 1. Admin PIN Security Gate ──────────────────────────────── -->
+<div id="adminAuthGate" class="admin-page-wrap">
+  <div class="auth-gate-card">
+    <div style="display:flex; justify-content:center; margin-bottom: 0.8rem;">
+      <span class="brand__mark" aria-hidden="true" style="width:24px; height:24px;"></span>
+    </div>
+    <h2 style="margin: 0 0 0.4rem; font-size: 1.3rem; color: var(--ink);">Anchor Master Admin</h2>
+    <p style="font-size: 0.82rem; color: var(--ink-dim); margin-bottom: 1.5rem;">
+      Enter the Master Security PIN to access the affiliate partner analytics and passcode dashboard.
+    </p>
+
+    <form id="adminPinForm" onsubmit="return false;" style="display:grid; gap:0.8rem; text-align:left;">
+      <div>
+        <label for="adminPinInput" style="font-size:0.78rem; font-weight:600; color:var(--ink-dim); display:block; margin-bottom:0.35rem;">
+          Master PIN
+        </label>
+        <input type="password" id="adminPinInput" class="input-field" placeholder="Enter PIN" autofocus required />
+      </div>
+
+      <div id="pinErrorMsg" style="color:#f87171; font-size:0.78rem; text-align:center;" hidden></div>
+
+      <button type="submit" class="btn btn--primary" id="btnSubmitPin" style="margin-top:0.4rem; width:100%;">
+        <span class="btn__glow"></span>Unlock Admin Portal ➔
+      </button>
+
+      <div style="text-align:center; margin-top:0.8rem;">
+        <a href="index.html" style="font-size:0.8rem; color:var(--ink-dim); text-decoration:none;">← Return to Anchor App</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── 2. Authenticated Admin Dashboard ────────────────────────── -->
+<div id="adminDashboard" class="admin-page-wrap" hidden>
+  
+  <!-- Header Bar -->
+  <header class="admin-header-row">
+    <div style="display:flex; align-items:center; gap:0.8rem;">
+      <span class="brand__mark" aria-hidden="true" style="width:20px; height:20px;"></span>
+      <div>
+        <h1 style="font-size:1.25rem; font-weight:800; margin:0; color:var(--ink); letter-spacing:-0.01em;">
+          Anchor Admin Portal
+        </h1>
+        <span style="font-size:0.75rem; color:var(--ink-dim);">Revenue, Partner Traffic & Passcodes</span>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+      <span class="admin-badge-live">
+        <span class="live-dot"></span>
+        <span id="cloudStatusText">Firestore Live Sync</span>
+      </span>
+      <a href="index.html" class="btn btn--ghost" style="padding:0.4rem 0.85rem; font-size:0.8rem; text-decoration:none;">
+        Open App
+      </a>
+      <button type="button" class="btn btn--ghost" id="btnAdminLogout" style="padding:0.4rem 0.85rem; font-size:0.8rem;">
+        Sign Out
+      </button>
+    </div>
+  </header>
+
+  <!-- KPI Overview Grid -->
+  <div class="admin-kpi-grid">
+    <div class="admin-kpi-card">
+      <span class="admin-kpi-label">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        Total Visits
+      </span>
+      <span class="admin-kpi-val" id="kpiVisits">0</span>
+      <span style="font-size:0.74rem; color:var(--ink-faint);">All channels combined</span>
+    </div>
+
+    <div class="admin-kpi-card">
+      <span class="admin-kpi-label">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Active Paying Subs
+      </span>
+      <span class="admin-kpi-val" id="kpiSubs" style="color:#10b981;">0</span>
+      <span style="font-size:0.74rem; color:var(--ink-faint);">Unlocked memberships</span>
+    </div>
+
+    <div class="admin-kpi-card">
+      <span class="admin-kpi-label">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Gross Revenue
+      </span>
+      <span class="admin-kpi-val" id="kpiGrossRev">₦0</span>
+      <span style="font-size:0.74rem; color:var(--ink-faint);">₦2,000 / monthly sub</span>
+    </div>
+
+    <div class="admin-kpi-card">
+      <span class="admin-kpi-label">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4"/><path d="M12 16V8"/></svg>
+        Your 50% Net Profit
+      </span>
+      <span class="admin-kpi-val" id="kpiNetProfit" style="color:#38bdf8;">₦0</span>
+      <span style="font-size:0.74rem; color:var(--ink-faint);">After affiliate payouts</span>
+    </div>
+  </div>
+
+  <!-- Partner Breakdown Section -->
+  <div class="admin-section">
+    <div class="admin-section-header">
+      <h2 class="admin-section-title">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        Partner & Affiliate Traffic Breakdowns
+      </h2>
+      <input type="text" id="partnerSearchInput" class="input-field admin-search-input" placeholder="Search partner code..." />
+    </div>
+
+    <div style="overflow-x:auto;">
+      <table class="admin-data-table">
+        <thead>
+          <tr>
+            <th>Partner Code</th>
+            <th>Visits</th>
+            <th>Active Subs</th>
+            <th>Conv. Rate</th>
+            <th>Gross Rev</th>
+            <th>Partner Payout (50%)</th>
+            <th>Shareable Link</th>
+            <th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="adminPartnerRows">
+          <tr>
+            <td colspan="8" style="text-align:center; color:var(--ink-faint); padding:2rem;">
+              Loading partner metrics from Firestore...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Bottom Grid: Quick Add Partner + Passcode Generator -->
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:1.5rem;">
+    
+    <!-- Add Partner -->
+    <div class="admin-section" style="margin-bottom:0;">
+      <h2 class="admin-section-title" style="margin-bottom:1rem;">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+        Register New Partner Code
+      </h2>
+      <form id="createPartnerForm" onsubmit="return false;" style="display:grid; gap:0.8rem;">
+        <div>
+          <label for="newPartnerCodeInput" style="display:block; font-size:0.78rem; font-weight:600; color:var(--ink-dim); margin-bottom:0.35rem;">
+            Affiliate Referral Code
+          </label>
+          <input type="text" id="newPartnerCodeInput" class="input-field" placeholder="e.g. twitter_promo" style="text-transform:lowercase;" required />
+        </div>
+        <button type="submit" class="btn btn--primary" id="btnCreatePartner">
+          <span class="btn__glow"></span>Provision Partner Code
+        </button>
+      </form>
+    </div>
+
+    <!-- Passcode Generator -->
+    <div class="admin-section" style="margin-bottom:0;">
+      <h2 class="admin-section-title" style="margin-bottom:1rem;">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Issue Access Passcode
+      </h2>
+      
+      <div style="display:grid; gap:0.8rem;">
+        <div class="passcode-box">
+          <span class="passcode-display" id="passcodeDisplay">ANC-READY</span>
+          <button type="button" class="btn btn--ghost" id="btnCopyPasscode" style="padding:0.4rem 0.8rem; font-size:0.8rem;">Copy</button>
+        </div>
+        <button type="button" class="btn btn--primary" id="btnGeneratePasscode">
+          <span class="btn__glow"></span>Generate New Passcode
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Floating Toast -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const VALID_PINS = ['4397'];
+  const STORAGE_KEY = 'anchor_admin_auth';
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  let partnersData = {
+    direct: { visits: 1, subs: 0 }
+  };
+  let deletedPartners = [];
+
+  // Toast Helper
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('#toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('is-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('is-visible'), 3200);
+  }
+
+  // Firebase Setup
+  let db = null;
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyD-0T6byubzr4un2DG6uRk2SdnZ_d4zFCA",
+    authDomain: "anchor-c0d11.firebaseapp.com",
+    projectId: "anchor-c0d11",
+    storageBucket: "anchor-c0d11.firebasestorage.app",
+    messagingSenderId: "353466821039",
+    appId: "1:353466821039:web:a05ac44b47e0d6ef5b675a",
+    measurementId: "G-S9E978L2X3"
+  };
+
+  function initFirebase() {
+    try {
+      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+      }
+      if (typeof firebase !== 'undefined' && firebase.apps.length) {
+        db = firebase.firestore();
+      }
+    } catch (e) {
+      console.warn('Firebase init error:', e);
+    }
+  }
+
+  // Auth Gate
+  function checkAuth() {
+    if (sessionStorage.getItem(STORAGE_KEY) === 'true') {
+      unlockDashboard();
+    }
+  }
+
+  function unlockDashboard() {
+    sessionStorage.setItem(STORAGE_KEY, 'true');
+    $('#adminAuthGate').hidden = true;
+    $('#adminDashboard').hidden = false;
+    initFirebase();
+    listenToPartnerMetrics();
+  }
+
+  function logout() {
+    sessionStorage.removeItem(STORAGE_KEY);
+    $('#adminAuthGate').hidden = false;
+    $('#adminDashboard').hidden = true;
+    $('#adminPinInput').value = '';
+    $('#pinErrorMsg').hidden = true;
+  }
+
+  $('#adminPinForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const pin = ($('#adminPinInput')?.value || '').trim().toLowerCase();
+    if (VALID_PINS.includes(pin)) {
+      $('#pinErrorMsg').hidden = true;
+      unlockDashboard();
+      toast('Welcome to Anchor Admin!');
+    } else {
+      const err = $('#pinErrorMsg');
+      if (err) {
+        err.textContent = 'Invalid Master PIN. Please try again.';
+        err.hidden = false;
+      }
+      $('#adminPinInput').select();
+    }
+  });
+
+  $('#btnAdminLogout')?.addEventListener('click', logout);
+
+  // Firestore Sync & Metrics Rendering
+  function listenToPartnerMetrics() {
+    try {
+      const localState = JSON.parse(localStorage.getItem('anchor_v1') || '{}');
+      if (localState.partners) partnersData = { ...partnersData, ...localState.partners };
+      if (Array.isArray(localState.deletedPartners)) deletedPartners = localState.deletedPartners;
+    } catch {}
+
+    if (db) {
+      db.collection('deleted_referrals').onSnapshot((snap) => {
+        snap.forEach((doc) => {
+          if (!deletedPartners.includes(doc.id)) deletedPartners.push(doc.id);
+        });
+        renderDashboardUI();
+      }, () => {});
+
+      db.collection('referrals').onSnapshot((snap) => {
+        snap.forEach((doc) => {
+          const code = doc.id.toLowerCase();
+          const d = doc.data();
+          if (deletedPartners.includes(code)) return;
+          if (!partnersData[code]) partnersData[code] = { visits: 0, subs: 0 };
+          if (typeof d.visits === 'number') partnersData[code].visits = d.visits;
+          if (typeof d.subs === 'number') partnersData[code].subs = d.subs;
+        });
+        renderDashboardUI();
+      }, (err) => {
+        console.warn('Firestore listen err:', err);
+        renderDashboardUI();
+      });
+    } else {
+      renderDashboardUI();
+    }
+  }
+
+  function renderDashboardUI() {
+    let totalVisits = 0;
+    let totalSubs = 0;
+
+    const searchTerm = ($('#partnerSearchInput')?.value || '').toLowerCase().trim();
+
+    const validEntries = Object.entries(partnersData).filter(([code]) => {
+      return !deletedPartners.includes(code);
+    });
+
+    validEntries.forEach(([code, p]) => {
+      totalVisits += (p.visits || 0);
+      totalSubs += (p.subs || 0);
+    });
+
+    const grossRev = totalSubs * 2000;
+    const netProfit = grossRev * 0.5;
+
+    $('#kpiVisits').textContent = totalVisits.toLocaleString();
+    $('#kpiSubs').textContent = totalSubs.toLocaleString();
+    $('#kpiGrossRev').textContent = `₦${grossRev.toLocaleString()}`;
+    $('#kpiNetProfit').textContent = `₦${netProfit.toLocaleString()}`;
+
+    const tbody = $('#adminPartnerRows');
+    if (!tbody) return;
+
+    const filtered = validEntries.filter(([code]) => !searchTerm || code.includes(searchTerm));
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--ink-faint); padding:2rem;">No matching partner traffic found.</td></tr>`;
+      return;
+    }
+
+    const rows = filtered.map(([code, p]) => {
+      const visits = p.visits || 0;
+      const subs = p.subs || 0;
+      const convRate = visits > 0 ? ((subs / visits) * 100).toFixed(1) + '%' : '0.0%';
+      const rev = subs * 2000;
+      const payout = rev * 0.5;
+      const link = `${window.location.origin}/?ref=${code}`;
+
+      const deleteBtn = code !== 'direct'
+        ? `<button type="button" class="btn-delete" data-del="${code}" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); color:#f87171; cursor:pointer; font-size:0.75rem; padding:0.25rem 0.6rem; border-radius:6px; font-weight:600;">Delete</button>`
+        : `<span style="color:var(--ink-faint); font-size:0.75rem;">Default</span>`;
+
+      return `
+        <tr>
+          <td><span class="badge-code">${code.toUpperCase()}</span></td>
+          <td><strong>${visits.toLocaleString()}</strong></td>
+          <td><strong style="color:#10b981;">${subs.toLocaleString()}</strong></td>
+          <td><span style="color:var(--ink-dim);">${convRate}</span></td>
+          <td>₦${rev.toLocaleString()}</td>
+          <td><strong style="color:#38bdf8;">₦${payout.toLocaleString()}</strong></td>
+          <td>
+            <button type="button" class="btn-copy-link" data-link="${link}" style="background:var(--glass); border:1px solid var(--stroke); color:var(--cyan); padding:0.2rem 0.5rem; font-size:0.74rem; border-radius:4px; cursor:pointer;">Copy Link</button>
+          </td>
+          <td style="text-align:right;">${deleteBtn}</td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = rows.join('');
+
+    $$('.btn-delete').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const code = btn.dataset.del;
+        deletePartner(code);
+      });
+    });
+
+    $$('.btn-copy-link').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const url = btn.dataset.link;
+        navigator.clipboard.writeText(url).then(() => toast('Partner link copied!')).catch(() => {
+          toast('Partner link copied!');
+        });
+      });
+    });
+  }
+
+  $('#partnerSearchInput')?.addEventListener('input', renderDashboardUI);
+
+  function deletePartner(code) {
+    if (code === 'direct') return;
+    if (!confirm(`Permanently delete partner code "${code.toUpperCase()}"? Traffic & payouts for this code will be deactivated.`)) return;
+
+    if (partnersData[code]) delete partnersData[code];
+    if (!deletedPartners.includes(code)) deletedPartners.push(code);
+
+    try {
+      const localState = JSON.parse(localStorage.getItem('anchor_v1') || '{}');
+      if (localState.partners) delete localState.partners[code];
+      if (!Array.isArray(localState.deletedPartners)) localState.deletedPartners = [];
+      if (!localState.deletedPartners.includes(code)) localState.deletedPartners.push(code);
+      localStorage.setItem('anchor_v1', JSON.stringify(localState));
+    } catch {}
+
+    if (db) {
+      try {
+        db.collection('referrals').doc(code).delete();
+        db.collection('deleted_referrals').doc(code).set({
+          disabled: true,
+          deletedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } catch {}
+    }
+
+    toast(`Partner code "${code.toUpperCase()}" deleted.`);
+    renderDashboardUI();
+  }
+
+  $('#createPartnerForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('#newPartnerCodeInput');
+    const raw = (input?.value || '').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+    if (!raw) return;
+
+    if (!partnersData[raw]) {
+      partnersData[raw] = { visits: 0, subs: 0 };
+    }
+    deletedPartners = deletedPartners.filter((c) => c !== raw);
+
+    if (db) {
+      db.collection('referrals').doc(raw).set({
+        visits: 0,
+        subs: 0,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    input.value = '';
+    toast(`Partner code "${raw.toUpperCase()}" registered!`);
+    renderDashboardUI();
+  });
+
+  function generatePasscode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'ANC-';
+    for (let i = 0; i < 4; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const display = $('#passcodeDisplay');
+    if (display) display.textContent = code;
+    return code;
+  }
+
+  $('#btnGeneratePasscode')?.addEventListener('click', () => {
+    const code = generatePasscode();
+    toast(`Generated passcode: ${code}`);
+  });
+
+  $('#btnCopyPasscode')?.addEventListener('click', () => {
+    const code = $('#passcodeDisplay')?.textContent || '';
+    if (code) {
+      navigator.clipboard.writeText(code).then(() => toast(`Copied passcode: ${code}`)).catch(() => {
+        toast(`Copied passcode: ${code}`);
+      });
+    }
+  });
+
+  function startField() {
+    const c = document.getElementById('field');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    let w, h, dots;
+    const resize = () => {
+      w = c.width = innerWidth;
+      h = c.height = innerHeight;
+      dots = Array.from({ length: 45 }, () => ({
+        x: Math.random() * w, y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.2, vy: (Math.random() - 0.5) * 0.2,
+        r: Math.random() * 1.5 + 0.5, a: Math.random() * 0.4 + 0.1
+      }));
+    };
+    const frame = () => {
+      ctx.clearRect(0, 0, w, h);
+      for (const d of dots) {
+        d.x += d.vx; d.y += d.vy;
+        if (d.x < 0) d.x = w; else if (d.x > w) d.x = 0;
+        if (d.y < 0) d.y = h; else if (d.y > h) d.y = 0;
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(190, 215, 255, ${d.a})`; ctx.fill();
+      }
+      requestAnimationFrame(frame);
+    };
+    addEventListener('resize', resize);
+    resize(); frame();
+  }
+
+  checkAuth();
+  startField();
+})();
+</script>
+</body>
+</html>
