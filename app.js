@@ -1249,7 +1249,7 @@ const CHECKIN_HOUR = 20;
 function checkinTarget() {
   const t = today(), y = addDays(t, -1);
   const lateEnough = new Date().getHours() >= CHECKIN_HOUR;
-  const claimable = (d) => !S.checkins[d] && d >= S.firstRun && !S.relapses.some((r) => r.date === d);
+  const claimable = (d) => !S.checkins[d] && d >= S.firstRun;
 
   if (lateEnough && claimable(t)) return t;
   if (claimable(y)) return y;
@@ -1281,7 +1281,7 @@ function renderToday() {
     btn.classList.add('is-done');
     $('#checkinState').textContent = 'Checked in ✓';
   } else {
-    const hrs = CHECKIN_HOUR - new Date().getHours();
+    const hrs = Math.max(1, CHECKIN_HOUR - new Date().getHours());
     title.textContent = 'Today — in progress';
     btn.textContent = `Check in after ${CHECKIN_HOUR - 12}pm`;
     btn.classList.add('is-waiting');
@@ -2584,6 +2584,7 @@ function bind() {
 
   // Subscription Lock Modal Handlers
   $('#btnSubClose')?.addEventListener('click', closeSubModal);
+  $('#btnPayPaystack')?.addEventListener('click', payWithPaystack);
   $('#btnSubUnlock')?.addEventListener('click', () => {
     const input = $('#subKeyInput');
     if (input) unlockApp(input.value);
@@ -3262,6 +3263,8 @@ function checkReferral() {
 }
 
 /* === 14c. Subscription 7-Day Free Trial & Currency System === */
+const PAYSTACK_PUBLIC_KEY = 'pk_test_e903b70f371c2bcb30ec49b9bd845804035e78df';
+
 const CURRENCIES = {
   NGN: { symbol: '₦', amount: '2,000', display: '₦2,000', name: 'NGN' },
   USD: { symbol: '$', amount: '2.99', display: '$2.99', name: 'USD' },
@@ -3298,9 +3301,14 @@ function renderSubPrice() {
     priceDisplay.innerHTML = `${c.display} <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span>`;
   }
 
+  const payPaystackText = $('#btnPayPaystackText');
+  if (payPaystackText) {
+    payPaystackText.textContent = `Pay Securely with Card / Transfer (${c.display})`;
+  }
+
   const payText = $('#btnPayText');
   if (payText) {
-    payText.textContent = `Get Passcode via WhatsApp (${c.display})`;
+    payText.textContent = `Alternative: Pay via WhatsApp (${c.display})`;
   }
 
   const name = S.user.name ? encodeURIComponent(S.user.name) : 'User';
@@ -3309,8 +3317,80 @@ function renderSubPrice() {
   const payBtn = $('#btnPayWhatsApp');
   if (payBtn) payBtn.href = waUrl;
 
+  const emailInput = $('#subEmailInput');
+  if (emailInput && !emailInput.value) {
+    emailInput.value = S.user.email || currentUser?.email || '';
+  }
+
   $$('.curr-btn').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.currency === currCode);
+  });
+}
+
+function loadPaystackScript(callback) {
+  if (typeof PaystackPop !== 'undefined') {
+    callback();
+    return;
+  }
+  const existing = document.getElementById('paystack-inline-js');
+  if (existing) {
+    existing.addEventListener('load', callback);
+    return;
+  }
+  const s = document.createElement('script');
+  s.id = 'paystack-inline-js';
+  s.src = 'https://js.paystack.co/v1/inline.js';
+  s.onload = callback;
+  s.onerror = () => toast('Unable to load Paystack payment gateway. Check your internet connection.');
+  document.head.appendChild(s);
+}
+
+function payWithPaystack() {
+  loadPaystackScript(() => {
+    try {
+      const currCode = S.user.currency || detectUserCurrency();
+      const c = CURRENCIES[currCode] || CURRENCIES.NGN;
+      
+      let amountMinor = 200000; // default 2,000 NGN in kobo
+      if (currCode === 'USD') amountMinor = 299; // $2.99
+      if (currCode === 'GBP') amountMinor = 249; // £2.49
+
+      const emailInput = $('#subEmailInput');
+      const email = (emailInput?.value || '').trim() || S.user.email || currentUser?.email || 'user@anchor-habits.app';
+
+      if (typeof PaystackPop === 'undefined') {
+        toast('Paystack payment gateway is loading. Please try again.');
+        return;
+      }
+
+      const handler = PaystackPop.setup({
+        key: PAYSTACK_PUBLIC_KEY,
+        email: email,
+        amount: amountMinor,
+        currency: currCode === 'NGN' ? 'NGN' : 'NGN', // Starter accounts default to NGN settlement
+        ref: 'ANC_' + Math.floor((Math.random() * 1000000000) + 1),
+        metadata: {
+          custom_fields: [
+            { display_name: "User ID", variable_name: "user_id", value: currentUser?.uid || S.firstRun || 'guest' },
+            { display_name: "Referrer", variable_name: "referrer", value: S.user.referrer || 'direct' },
+            { display_name: "Subscriber Name", variable_name: "subscriber_name", value: S.user.name || 'Anchor User' }
+          ]
+        },
+        callback: function(response) {
+          const paymentRef = response.reference || 'PAYSTACK-SUCCESS';
+          unlockApp(paymentRef);
+          toast('Payment successful! Full Access Unlocked.');
+        },
+        onClose: function() {
+          toast('Payment window closed.');
+        }
+      });
+
+      handler.openIframe();
+    } catch (err) {
+      console.error('Paystack Launch Error:', err);
+      toast('Payment error: ' + (err.message || 'Could not launch payment window.'));
+    }
   });
 }
 
@@ -3339,6 +3419,7 @@ window.openSubModal = openSubModal;
 window.closeSubModal = closeSubModal;
 window.isTrialEnded = isTrialEnded;
 window.unlockApp = unlockApp;
+window.payWithPaystack = payWithPaystack;
 
 function unlockApp(key) {
   const cleanKey = (key || '').toUpperCase().trim();
@@ -3660,9 +3741,20 @@ function startReveal() {
 
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  const okOrigin = location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname);
-  if (!okOrigin) return;
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      for (let reg of regs) reg.unregister();
+    });
+    if (typeof caches !== 'undefined') {
+      caches.keys().then((keys) => {
+        for (let k of keys) caches.delete(k);
+      });
+    }
+    return;
+  }
+  if (location.protocol === 'https:') {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
 }
 
 /* -- Boot ----------------------------------------------------- */

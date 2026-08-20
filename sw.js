@@ -4,12 +4,13 @@
    background. Your streak data never touches this - it lives in
    localStorage, which the service worker cannot see or evict. */
 
-const CACHE = 'anchor-v1';
+const CACHE = 'anchor-v2';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './admin.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
