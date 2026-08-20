@@ -2316,9 +2316,7 @@ function openSettings() {
     if (accBtn) {
       accBtn.textContent = 'Link Account';
       accBtn.onclick = () => {
-        $('#settingsModal').hidden = true;
-        document.body.style.overflow = '';
-        openWelcomeLanding();
+        openLinkAccountModal();
       };
     }
   }
@@ -2332,6 +2330,25 @@ function openSettings() {
   });
 
   renderInteractiveTriggers('settingsTriggersList');
+}
+
+function openLinkAccountModal() {
+  const modal = $('#linkAccountModal');
+  if (!modal) return;
+  const errEl = $('#linkAccountError');
+  if (errEl) { errEl.textContent = ''; errEl.hidden = true; }
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLinkAccountModal() {
+  const modal = $('#linkAccountModal');
+  if (modal) modal.hidden = true;
+  if ($('#settingsModal') && !$('#settingsModal').hidden) {
+    document.body.style.overflow = 'hidden';
+  } else {
+    document.body.style.overflow = '';
+  }
 }
 
 function renderSettingsActiveBadges() {
@@ -2720,6 +2737,85 @@ function bind() {
   $('#btnSettingsClose')?.addEventListener('click', () => {
     $('#settingsModal').hidden = true;
     document.body.style.overflow = '';
+  });
+
+  // Dedicated Link Account Modal Handlers
+  $('#btnLinkAccountClose')?.addEventListener('click', closeLinkAccountModal);
+  $('#btnLinkAccountCancel')?.addEventListener('click', closeLinkAccountModal);
+
+  // Link Account: Google Auth
+  $('#btnLinkGoogleAuth')?.addEventListener('click', () => {
+    const errEl = $('#linkAccountError');
+    if (errEl) { errEl.textContent = ''; errEl.hidden = true; }
+
+    if (!auth) {
+      if (errEl) { errEl.textContent = 'Auth service is loading. Please try again in a moment.'; errEl.hidden = false; }
+      return;
+    }
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const btn = $('#btnLinkGoogleAuth');
+    if (btn) btn.disabled = true;
+
+    auth.signInWithPopup(provider).then((result) => {
+      const user = result.user;
+      currentUser = user;
+      if (user.displayName && !S.user.name) {
+        S.user.name = user.displayName;
+      }
+      save(); // Immediately uploads existing streaks to this user's cloud document
+      closeLinkAccountModal();
+      openSettings();
+      toast(`Account linked! Streaks backed up as ${user.displayName || user.email}`);
+    }).catch((error) => {
+      if (error.code !== 'auth/popup-closed-by-user') {
+        if (errEl) { errEl.textContent = error.message || 'Google sign-in failed.'; errEl.hidden = false; }
+      }
+    }).finally(() => {
+      if (btn) btn.disabled = false;
+    });
+  });
+
+  // Link Account: Email & Password
+  $('#linkAccountForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const errEl = $('#linkAccountError');
+    if (errEl) { errEl.textContent = ''; errEl.hidden = true; }
+
+    const email = $('#linkEmailInput')?.value.trim();
+    const password = $('#linkPasswordInput')?.value;
+
+    if (!email || !password || password.length < 6) {
+      if (errEl) { errEl.textContent = 'Please enter a valid email and a password of at least 6 characters.'; errEl.hidden = false; }
+      return;
+    }
+
+    if (!auth) return;
+    const btn = $('#btnSubmitLinkAccount');
+    if (btn) btn.disabled = true;
+
+    auth.createUserWithEmailAndPassword(email, password).then((cred) => {
+      currentUser = cred.user;
+      save(); // Sync existing streaks
+      closeLinkAccountModal();
+      openSettings();
+      toast(`Account linked! Streaks backed up as ${email}`);
+    }).catch((err) => {
+      if (err.code === 'auth/email-already-in-use') {
+        auth.signInWithEmailAndPassword(email, password).then((cred) => {
+          currentUser = cred.user;
+          syncFromCloud(currentUser.uid);
+          closeLinkAccountModal();
+          openSettings();
+          toast(`Signed in & synced as ${email}`);
+        }).catch((signInErr) => {
+          if (errEl) { errEl.textContent = signInErr.message || 'Incorrect password for this existing account.'; errEl.hidden = false; }
+        });
+      } else {
+        if (errEl) { errEl.textContent = err.message || 'Could not link account.'; errEl.hidden = false; }
+      }
+    }).finally(() => {
+      if (btn) btn.disabled = false;
+    });
   });
 
   // Settings: Habit Picker button
