@@ -904,6 +904,9 @@ function syncFromCloud(uid) {
         S = { ...seed(), ...remoteState, version: 1 };
         try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
         renderAll();
+        if (isTrialEnded() && !S.user?.unlocked) {
+          openSubModal();
+        }
       }
     } else {
       save();
@@ -3332,6 +3335,11 @@ function closeSubModal() {
   document.body.style.overflow = '';
 }
 
+window.openSubModal = openSubModal;
+window.closeSubModal = closeSubModal;
+window.isTrialEnded = isTrialEnded;
+window.unlockApp = unlockApp;
+
 function unlockApp(key) {
   const cleanKey = (key || '').toUpperCase().trim();
   if (cleanKey.length >= 4) {
@@ -3671,7 +3679,7 @@ registerSW();
 initWaveCanvas();
 
 // Check 7-Day Subscription Free Trial
-if (S.user.onboarded && isTrialEnded() && !S.user.unlocked) {
+if (isTrialEnded() && !S.user?.unlocked) {
   openSubModal();
 }
 
