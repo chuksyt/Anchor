@@ -1,10 +1,70 @@
 # Anchor
 
-A single-purpose habit tracker: how many days you've opened it, how many days
-you've been porn-free, and how many days you haven't masturbated.
+A habit and recovery tracker: clean-day streaks for the habits you pick, daily
+check-ins, urge mode, milestones, and a 7-day free trial followed by a ₦2,000/month
+subscription.
 
-No accounts, no server, no network calls. Everything is stored in your browser's
-`localStorage` under one key (`anchor.state.v1`).
+## Where your data lives
+
+- **On the device first.** Everything is kept in `localStorage` under one key
+  (`anchor.state.v1`), so the app works fully offline.
+- **Backed up to Firebase.** Every visitor is signed in to Firebase (anonymously
+  until they link Google or email), and their whole state, including reset notes and
+  urges, is saved to Firestore at `users/{uid}`. `firestore.rules` makes each
+  document readable and writable only by its owner.
+- **Linking an account** keeps the same user ID, so streaks and paid access carry
+  over. If a device and an account hold different data, the app asks which copy
+  to keep and never overwrites either one silently.
+
+## Payments and access
+
+| Route | How access is granted |
+| --- | --- |
+| **Paystack** (card/transfer) | After checkout the app sends the payment reference to the **payment Worker** (`worker/`). The Worker asks Paystack whether it really succeeded (NGN, at least ₦2,000, started by this same user), records the reference once in `payments/{ref}`, and extends `entitlements/{uid}` by 30 days. |
+| **WhatsApp** | The admin issues a single-use passcode (`ANC-XXXX-XXXX`) in `admin.html`. Redeeming it is a Firestore batch that `firestore.rules` accepts only if the code exists and is unused. It gives 30 days. |
+
+Everyone is charged in naira; USD/GBP only change the price shown ("≈ $1.35").
+When the trial is over and there is no valid access, the paywall cannot be
+closed. It offers Pay, Passcode, Sign in (to restore access from another device)
+and Export.
+
+Unlocks from before server checks existed (`user.unlocked` with no expiry) keep
+working until `LEGACY_UNLOCK_GRACE_END` (2026-12-31) in `app.js`.
+
+> This is still a client-side app. Someone who edits their own `localStorage`
+> and stays offline can get past the paywall on their own device. What the
+> server does guarantee is that nobody gets an entitlement, a passcode
+> redemption or partner credit without paying.
+
+## Admin portal
+
+`admin.html` (also reachable at `/admin/`, or by tapping the logo 5 times) uses
+**Google sign-in**. Only accounts with a document at `admins/{uid}` get in; there
+is no PIN. The first time you sign in, the page shows your user ID. Create that
+document by hand in the Firebase console → Firestore → collection `admins`.
+
+It shows active subscriptions (from `entitlements`), partner traffic
+(`referrals`), and lets you add or delete partner codes and issue passcodes.
+
+## Setup checklist
+
+1. **Firestore rules** — `npm i -g firebase-tools`, `firebase login`, then
+   `firebase deploy --only firestore:rules --project anchor-c0d11`.
+2. **Admin** — sign in at `admin.html`, copy your user ID, create `admins/<id>`.
+3. **Partner codes** — create them in the admin portal. Add one called `direct`
+   if you want unreferred visits counted.
+4. **Payment Worker** (`worker/`):
+   - Firebase console → Project settings → Service accounts → *Generate new
+     private key* (keep the JSON private).
+   - `cd worker`, `npx wrangler login`, then
+     `npx wrangler secret put GCP_SERVICE_ACCOUNT` (paste the JSON) and
+     `npx wrangler secret put PAYSTACK_SECRET_KEY`.
+   - Set `ALLOWED_ORIGINS` in `worker/wrangler.toml` to the address the app is
+     served from, then `npx wrangler deploy`.
+   - Put the Worker URL in `PAYMENT_API` at the top of the subscription section
+     in `app.js`. Until it's set, the card button tells people to use WhatsApp.
+5. **Going live** — swap `PAYSTACK_PUBLIC_KEY` in `app.js` to your `pk_live_…`
+   key and the Worker secret to `sk_live_…`.
 
 ## Running it
 
@@ -35,7 +95,7 @@ then open <http://127.0.0.1:8777>.
 | **Milestones** | 1, 3, 7, 14, 21, 30, 60, 90, 180, 365 — track each habit's milestones **independently** (via tabs) or combined! |
 | **Back-Log System** | Missed logging for a few days? An alert banner lets you 1-tap confirm all missed days as clean or review day-by-day without losing your streak. |
 | **Urge mode** | Full-screen 4-4-6 paced breathing (4 cycles) plus rotating grounding prompts. Pressing **"I'm alright now"** logs it as an urge ridden out, with the cycle count. Escape just exits and logs nothing. |
-| **Erase all data** | Wipes localStorage and reseeds. |
+| **Erase all data** | Wipes localStorage, deletes the cloud copy and signs out. |
 
 Dates are keyed on your **local** calendar day, so a streak ticks over at your
 midnight, not UTC's.
@@ -54,6 +114,10 @@ Remember `file://` and `localhost` keep **separate** data. If you've been using
 `file://`, Export first, then Import after installing.
 
 ## Files
+
+The list below covers the app shell. Also: `admin.html` (admin portal),
+`admin/index.html` (redirect to it), `firestore.rules` + `firebase.json`
+(security rules), and `worker/` (Cloudflare payment Worker).
 
 ```
 index.html            structure only
