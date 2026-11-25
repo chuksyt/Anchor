@@ -7,15 +7,15 @@ Last updated: 2026-11-25
 The app works offline, syncs to Firebase, and has a 7-day trial followed by a
 ₦2,000/month subscription paid **manually over WhatsApp** for a single-use
 passcode. The paywall, admin portal and sync were rebuilt on 2026-11-25 (see
-"Recent changes"). **`firestore.rules` is written but not deployed yet**, so
-passcodes and the admin portal depend on the steps below.
+"Recent changes"). `firestore.rules` is deployed (2026-11-25); the admin
+entry and a real passcode test are still to do.
 
 ## Setup still to do
 
 Commands are in the README's "Setup checklist".
 
-- [ ] Test `firestore.rules` (Rules Playground or emulator), then deploy them.
-      They were written without an emulator run.
+- [x] Test `firestore.rules` in the emulator (53 allow/deny checks passed) and
+      deploy them — done 2026-11-25.
 - [ ] Sign in at `admin.html` and create `admins/<your uid>` in the Firebase console.
 - [ ] Create partner codes in the admin portal (plus `direct` to count unreferred visits).
 - [ ] Issue one passcode and redeem it end to end.
