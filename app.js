@@ -2483,6 +2483,9 @@ function openHabitPickerModal() {
   renderHabitPickerGrid();
   modal.hidden = false;
 }
+// The empty-dashboard "Choose Habits to Track" button calls this from an
+// inline onclick, which only sees globals.
+window.openHabitPickerModal = openHabitPickerModal;
 
 function renderHabitPickerGrid() {
   const grid = $('#habitPickerGrid');
