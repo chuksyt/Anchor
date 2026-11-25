@@ -555,7 +555,8 @@
       const subs = p.subs || 0;
       const convRate = visits > 0 ? ((subs / visits) * 100).toFixed(1) + '%' : '0.0%';
       const rev = subs * PRICE_NAIRA;
-      const payout = rev * PARTNER_SHARE;
+      // "direct" means nobody referred the user, so there is no partner to pay.
+      const payout = code === 'direct' ? null : rev * PARTNER_SHARE;
       appUrl.search = `?ref=${encodeURIComponent(code)}`;
       const link = appUrl.toString();
 
@@ -570,7 +571,9 @@
           <td><strong style="color:#10b981;">${subs.toLocaleString()}</strong></td>
           <td><span style="color:var(--ink-dim);">${convRate}</span></td>
           <td>₦${rev.toLocaleString()}</td>
-          <td><strong style="color:#38bdf8;">₦${payout.toLocaleString()}</strong></td>
+          <td>${payout === null
+            ? '<span style="color:var(--ink-faint);" title="No partner: unreferred sign-ups">—</span>'
+            : `<strong style="color:#38bdf8;">₦${payout.toLocaleString()}</strong>`}</td>
           <td>
             <button type="button" class="btn-copy-link" data-link="${esc(link)}" style="background:var(--glass); border:1px solid var(--stroke); color:var(--cyan); padding:0.2rem 0.5rem; font-size:0.74rem; border-radius:4px; cursor:pointer;">Copy Link</button>
           </td>
