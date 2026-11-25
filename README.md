@@ -2,7 +2,7 @@
 
 A habit and recovery tracker: clean-day streaks for the habits you pick, daily
 check-ins, urge mode, milestones, and a 7-day free trial followed by a ₦2,000/month
-subscription.
+subscription paid manually over WhatsApp.
 
 ## Where your data lives
 
@@ -18,23 +18,30 @@ subscription.
 
 ## Payments and access
 
-| Route | How access is granted |
-| --- | --- |
-| **Paystack** (card/transfer) | After checkout the app sends the payment reference to the **payment Worker** (`worker/`). The Worker asks Paystack whether it really succeeded (NGN, at least ₦2,000, started by this same user), records the reference once in `payments/{ref}`, and extends `entitlements/{uid}` by 30 days. |
-| **WhatsApp** | The admin issues a single-use passcode (`ANC-XXXX-XXXX`) in `admin.html`. Redeeming it is a Firestore batch that `firestore.rules` accepts only if the code exists and is unused. It gives 30 days. |
+Payment is **manual**:
 
-Everyone is charged in naira; USD/GBP only change the price shown ("≈ $1.35").
-When the trial is over and there is no valid access, the paywall cannot be
-closed. It offers Pay, Passcode, Sign in (to restore access from another device)
-and Export.
+1. The user taps **Pay ₦2,000 via WhatsApp** and pays you directly.
+2. You issue a single-use passcode (`ANC-XXXX-XXXX`) in `admin.html` and send it back.
+3. The user enters it. Redeeming is a Firestore batch that `firestore.rules`
+   accepts only if the code exists and is unused. It writes
+   `entitlements/{uid}` with 30 days of access (added on top of any time left).
+
+The price is always ₦2,000; USD/GBP only change the guide price shown
+("≈ $1.35"). When the trial is over and there is no valid access, the paywall
+cannot be closed. It offers WhatsApp, Passcode, Sign in (to restore access
+from another device) and Export.
+
+Card payments (Paystack, verified by a Cloudflare Worker) were built and then
+removed until they can be confirmed end to end. The code is in commit
+`673b011` (`worker/` and §14c of `app.js`) if you bring them back.
 
 Unlocks from before server checks existed (`user.unlocked` with no expiry) keep
 working until `LEGACY_UNLOCK_GRACE_END` (2026-12-31) in `app.js`.
 
 > This is still a client-side app. Someone who edits their own `localStorage`
 > and stays offline can get past the paywall on their own device. What the
-> server does guarantee is that nobody gets an entitlement, a passcode
-> redemption or partner credit without paying.
+> rules do guarantee is that nobody gets an entitlement or partner credit
+> without a passcode you issued.
 
 ## Admin portal
 
@@ -53,18 +60,8 @@ It shows active subscriptions (from `entitlements`), partner traffic
 2. **Admin** — sign in at `admin.html`, copy your user ID, create `admins/<id>`.
 3. **Partner codes** — create them in the admin portal. Add one called `direct`
    if you want unreferred visits counted.
-4. **Payment Worker** (`worker/`):
-   - Firebase console → Project settings → Service accounts → *Generate new
-     private key* (keep the JSON private).
-   - `cd worker`, `npx wrangler login`, then
-     `npx wrangler secret put GCP_SERVICE_ACCOUNT` (paste the JSON) and
-     `npx wrangler secret put PAYSTACK_SECRET_KEY`.
-   - Set `ALLOWED_ORIGINS` in `worker/wrangler.toml` to the address the app is
-     served from, then `npx wrangler deploy`.
-   - Put the Worker URL in `PAYMENT_API` at the top of the subscription section
-     in `app.js`. Until it's set, the card button tells people to use WhatsApp.
-5. **Going live** — swap `PAYSTACK_PUBLIC_KEY` in `app.js` to your `pk_live_…`
-   key and the Worker secret to `sk_live_…`.
+4. **Test a passcode** — issue one in the admin portal, redeem it in the app,
+   and check it shows as used.
 
 ## Running it
 
@@ -117,7 +114,7 @@ Remember `file://` and `localhost` keep **separate** data. If you've been using
 
 The list below covers the app shell. Also: `admin.html` (admin portal),
 `admin/index.html` (redirect to it), `firestore.rules` + `firebase.json`
-(security rules), and `worker/` (Cloudflare payment Worker).
+(security rules).
 
 ```
 index.html            structure only

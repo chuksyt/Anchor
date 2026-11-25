@@ -963,7 +963,7 @@ function keepLocalCopy(uid) {
 }
 
 function afterSync() {
-  refreshEntitlement().then(retryPendingPayments);
+  refreshEntitlement();
 }
 
 function describeCopy(st) {
@@ -2660,7 +2660,6 @@ function bind() {
 
   // Subscription Lock Modal Handlers
   $('#btnSubClose')?.addEventListener('click', closeSubModal);
-  $('#btnPayPaystack')?.addEventListener('click', payWithPaystack);
   $('#btnSubUnlock')?.addEventListener('click', () => {
     const input = $('#subKeyInput');
     if (input) redeemPasscode(input.value);
@@ -3384,34 +3383,24 @@ function checkReferral() {
   }
 }
 
-/* === 14c. Subscription: 7-Day Free Trial, Paystack & Passcodes ===
-   Paid access is decided by the server, not by this file:
-   - Paystack: the payment reference is sent to the Anchor payment Worker
-     (worker/), which asks Paystack whether it really succeeded and only
-     then writes entitlements/{uid} in Firestore.
-   - WhatsApp: the admin issues a single-use passcode (passcodes/{code});
-     redeeming it is a Firestore batch that the security rules only accept
-     if the code exists and is unused (firestore.rules).
+/* === 14c. Subscription: 7-Day Free Trial & Passcodes ===
+   Payment is manual: the user pays over WhatsApp, the admin issues a
+   single-use passcode in admin.html (passcodes/{code}), and redeeming it is
+   a Firestore batch that the security rules only accept if the code exists
+   and is unused (firestore.rules). That writes entitlements/{uid}.
    The local copy (S.user.unlockExpires) is a cache so the app still opens
    offline; it is refreshed from entitlements/{uid} whenever we are online. */
 
-// Replace with your pk_live_ key when you switch Paystack to live mode.
-const PAYSTACK_PUBLIC_KEY = 'pk_test_e903b70f371c2bcb30ec49b9bd845804035e78df';
-// URL of the deployed Cloudflare Worker in worker/ (no trailing slash),
-// e.g. 'https://anchor-pay.<your-subdomain>.workers.dev'.
-const PAYMENT_API = '';
-
-const PRICE_KOBO = 200000;               // ₦2,000 — everyone is charged in naira
-const ACCESS_DAYS = 30;
+const ACCESS_DAYS = 30;                  // one passcode = 30 days; price is ₦2,000
 // Unlocks granted before server checks existed cannot be verified. They keep
 // working until this date, after which a passcode or payment is needed.
 const LEGACY_UNLOCK_GRACE_END = '2026-12-31';
 
-// Shown as a guide only; the card issuer does the real conversion.
+// The price is always ₦2,000; other currencies are shown as a rough guide.
 const CURRENCIES = {
   NGN: { display: '₦2,000', approx: '' },
-  USD: { display: '≈ $1.35', approx: 'Charged as ₦2,000 — your bank converts it (about $1.35).' },
-  GBP: { display: '≈ £1.00', approx: 'Charged as ₦2,000 — your bank converts it (about £1.00).' }
+  USD: { display: '≈ $1.35', approx: 'The price is ₦2,000 (about $1.35).' },
+  GBP: { display: '≈ £1.00', approx: 'The price is ₦2,000 (about £1.00).' }
 };
 
 function isTrialEnded() {
@@ -3482,11 +3471,8 @@ function renderSubPrice() {
     approxEl.hidden = !c.approx;
   }
 
-  const payPaystackText = $('#btnPayPaystackText');
-  if (payPaystackText) payPaystackText.textContent = 'Pay Securely with Card / Transfer (₦2,000)';
-
   const payText = $('#btnPayText');
-  if (payText) payText.textContent = 'Alternative: Pay via WhatsApp (₦2,000)';
+  if (payText) payText.textContent = 'Pay ₦2,000 via WhatsApp';
 
   const name = S.user.name ? encodeURIComponent(S.user.name) : 'User';
   const ref = S.user.referrer ? encodeURIComponent(S.user.referrer) : 'direct';
@@ -3494,10 +3480,6 @@ function renderSubPrice() {
   const payBtn = $('#btnPayWhatsApp');
   if (payBtn) payBtn.href = waUrl;
 
-  const emailInput = $('#subEmailInput');
-  if (emailInput && !emailInput.value) {
-    emailInput.value = S.user.email || currentUser?.email || '';
-  }
 
   $$('.curr-btn').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.currency === currCode);
@@ -3509,125 +3491,6 @@ function renderSubPrice() {
     until.hidden = !(exp && exp > Date.now());
     if (exp) until.textContent = `Your access runs until ${new Date(exp).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}.`;
   }
-}
-
-function loadPaystackScript(callback) {
-  if (typeof PaystackPop !== 'undefined') { callback(); return; }
-  const existing = document.getElementById('paystack-inline-js');
-  if (existing) { existing.addEventListener('load', callback); return; }
-  const s = document.createElement('script');
-  s.id = 'paystack-inline-js';
-  s.src = 'https://js.paystack.co/v1/inline.js';
-  s.onload = callback;
-  s.onerror = () => toast('Unable to load Paystack payment gateway. Check your internet connection.');
-  document.head.appendChild(s);
-}
-
-function randomToken(len, alphabet) {
-  const bytes = new Uint8Array(len);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
-}
-
-let payInFlight = false;
-function payWithPaystack() {
-  if (payInFlight) return;
-  if (!PAYMENT_API) {
-    toast('Card payments are not switched on yet. Please use the WhatsApp option.');
-    return;
-  }
-  if (!db || !currentUser) {
-    toast('Connect to the internet to pay, then try again.');
-    return;
-  }
-  const emailInput = $('#subEmailInput');
-  const email = (emailInput?.value || '').trim() || currentUser.email || S.user.email || '';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    toast('Enter your email so Paystack can send your receipt.');
-    emailInput?.focus();
-    return;
-  }
-  payInFlight = true;
-  loadPaystackScript(() => {
-    try {
-      if (typeof PaystackPop === 'undefined') {
-        toast('Paystack payment gateway is loading. Please try again.');
-        payInFlight = false;
-        return;
-      }
-      const handler = PaystackPop.setup({
-        key: PAYSTACK_PUBLIC_KEY,
-        email,
-        amount: PRICE_KOBO,
-        currency: 'NGN',
-        ref: 'ANC_' + randomToken(16, 'abcdefghijklmnopqrstuvwxyz0123456789'),
-        metadata: {
-          uid: currentUser.uid,              // the Worker checks this matches the payer
-          referrer: S.user.referrer || 'direct',
-          custom_fields: [
-            { display_name: 'User ID', variable_name: 'user_id', value: currentUser.uid },
-            { display_name: 'Referrer', variable_name: 'referrer', value: S.user.referrer || 'direct' },
-            { display_name: 'Subscriber Name', variable_name: 'subscriber_name', value: S.user.name || 'Anchor User' }
-          ]
-        },
-        callback: function (response) {
-          payInFlight = false;
-          const reference = response && response.reference;
-          if (!reference) return;
-          if (!Array.isArray(S.pendingPayments)) S.pendingPayments = [];
-          if (!S.pendingPayments.includes(reference)) S.pendingPayments.push(reference);
-          save();
-          toast('Payment received — confirming it with Paystack…');
-          verifyPayment(reference, true);
-        },
-        onClose: function () {
-          payInFlight = false;
-          toast('Payment window closed.');
-        }
-      });
-      handler.openIframe();
-    } catch (err) {
-      payInFlight = false;
-      console.error('Paystack Launch Error:', err);
-      toast('Payment error: ' + (err.message || 'Could not launch payment window.'));
-    }
-  });
-}
-
-/* Ask the Worker to confirm a payment. A reference stays in
-   S.pendingPayments until the Worker gives a final answer, so a payment made
-   just before the connection dropped is confirmed on the next start-up. */
-function verifyPayment(reference, loud) {
-  if (!PAYMENT_API || !currentUser) return Promise.resolve();
-  return currentUser.getIdToken()
-    .then((token) => fetch(`${PAYMENT_API}/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ reference })
-    }))
-    .then((res) => res.json().catch(() => ({})).then((body) => ({ res, body })))
-    .then(({ res, body }) => {
-      if (res.ok && body.ok) {
-        S.pendingPayments = (S.pendingPayments || []).filter((r) => r !== reference);
-        save();
-        return refreshEntitlement().then(() => toast('Payment confirmed. Full access unlocked!'));
-      }
-      if (body.final) {
-        S.pendingPayments = (S.pendingPayments || []).filter((r) => r !== reference);
-        save();
-        toast(body.error || 'Paystack did not confirm this payment.');
-      } else if (loud) {
-        toast("Couldn't confirm the payment yet. Anchor will retry automatically.");
-      }
-    })
-    .catch(() => {
-      if (loud) toast("Couldn't reach the payment server. Anchor will retry when you're back online.");
-    });
-}
-
-function retryPendingPayments() {
-  const pending = Array.isArray(S.pendingPayments) ? S.pendingPayments.slice() : [];
-  return pending.reduce((p, ref) => p.then(() => verifyPayment(ref, false)), Promise.resolve());
 }
 
 function setCurrency(code) {

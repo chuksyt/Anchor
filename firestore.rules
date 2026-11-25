@@ -9,11 +9,8 @@ rules_version = '2';
 //   passcodes/{code}        single-use WhatsApp passcodes issued by the admin
 //   referrals/{code}        partner visit / subscription counters
 //   deleted_referrals/{code} partner codes the admin has switched off
-//   payments/{reference}    Paystack references already used (Worker only)
 //   admins/{uid}            who may use admin.html — create these by hand
 //                           in the Firebase console; no client can write them
-//
-// The payment Worker uses a service account, which bypasses these rules.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -95,10 +92,6 @@ service cloud.firestore {
     match /deleted_referrals/{code} {
       allow get: if true;                    // the app checks whether its ?ref= is disabled
       allow list, write: if isAdmin();
-    }
-
-    match /payments/{reference} {
-      allow read, write: if false;           // Worker only
     }
   }
 }
