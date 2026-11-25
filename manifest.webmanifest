@@ -1,7 +1,7 @@
 {
   "name": "Anchor — streaks that hold",
   "short_name": "Anchor",
-  "description": "A private habit tracker for clean-day streaks. All data stays on your device.",
+  "description": "A private habit tracker for clean-day streaks. Works offline; your data is backed up to your own account.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

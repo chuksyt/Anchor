@@ -853,7 +853,7 @@
 </div>
 
 <!-- ── Dedicated Link Account Modal ──────────────────────────────── -->
-<div class="modal" id="linkAccountModal" hidden style="z-index: 135;">
+<div class="modal" id="linkAccountModal" hidden style="z-index: 150;">
   <div class="modal__card" style="max-width: 440px;" role="dialog" aria-modal="true" aria-labelledby="linkAccountTitle">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
       <h4 id="linkAccountTitle" style="margin:0; color:var(--cyan-soft);">Connect & Backup Streaks</h4>
@@ -1018,14 +1018,16 @@
       <span class="currency-switch-label">Select Currency</span>
       <div class="currency-switch-btns" role="tablist" aria-label="Select pricing currency">
         <button type="button" class="curr-btn is-active" data-currency="NGN">NGN ₦2,000</button>
-        <button type="button" class="curr-btn" data-currency="USD">USD $2.99</button>
-        <button type="button" class="curr-btn" data-currency="GBP">GBP £2.49</button>
+        <button type="button" class="curr-btn" data-currency="USD">USD ≈ $1.35</button>
+        <button type="button" class="curr-btn" data-currency="GBP">GBP ≈ £1.00</button>
       </div>
     </div>
 
     <div style="margin-top: 0.3rem;">
       <div class="price-pill" id="subPriceDisplay">₦2,000 <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span></div>
       <p class="price-sub">Unlock Unlimited Tracking & Full Access</p>
+      <p class="price-sub" id="subPriceApprox" hidden></p>
+      <p class="price-sub" id="subAccessUntil" hidden></p>
     </div>
     
     <div style="display:grid; gap:0.6rem; text-align:left;">
@@ -1034,7 +1036,7 @@
         <input type="email" id="subEmailInput" class="input-field" placeholder="your-email@example.com" />
       </div>
 
-      <button type="button" class="btn btn--primary" id="btnPayPaystack" onclick="window.payWithPaystack()" style="text-align:center; justify-content:center; width:100%;">
+      <button type="button" class="btn btn--primary" id="btnPayPaystack" style="text-align:center; justify-content:center; width:100%;">
         <span class="btn__glow"></span><span id="btnPayPaystackText">Pay Securely with Card / Transfer (₦2,000)</span>
       </button>
 
@@ -1043,68 +1045,40 @@
       </a>
 
       <div style="display:flex; gap:0.5rem; margin-top:0.3rem; border-top:1px solid var(--stroke); padding-top:0.6rem;">
-        <input type="text" id="subKeyInput" class="input-field" placeholder="Enter Passcode (e.g. ANC-XXXX)" style="text-transform:uppercase;" />
+        <input type="text" id="subKeyInput" class="input-field" placeholder="ANC-XXXX-XXXX" autocomplete="off" style="text-transform:uppercase;" />
         <button class="btn btn--ghost" id="btnSubUnlock">Submit</button>
+      </div>
+
+      <div style="display:flex; gap:0.5rem; justify-content:center; flex-wrap:wrap; font-size:0.78rem;">
+        <button type="button" class="linkbtn" id="btnSubSignIn">Already subscribed? Sign in</button>
+        <span style="color:var(--ink-faint);">·</span>
+        <button type="button" class="linkbtn" id="btnSubExport">Export my data</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ── Secret Admin Panel ─────────────────────────────────────────── -->
-<div class="modal" id="adminModal" hidden style="z-index: 150;">
-  <div class="modal__card admin-card" role="dialog" aria-modal="true">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <h4 style="margin:0; color:var(--cyan-soft); display:flex; align-items:center; gap:0.4rem;">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-        Anchor Partner Admin Panel
-      </h4>
-      <button class="onboarding__close" id="btnAdminClose" title="Close Admin">✕</button>
-    </div>
-    <div class="admin-stats-grid">
-      <div class="admin-stat-card">
-        <div class="admin-stat-card__val" id="adminTotalVisits">0</div>
-        <div class="admin-stat-card__lbl">Total Visits</div>
+<!-- ── Sync Choice Modal: shown when this device and the signed-in account
+     hold different data, so neither copy is overwritten without asking. ── -->
+<div class="modal" id="syncChoiceModal" hidden style="z-index: 160;">
+  <div class="modal__card" style="max-width: 440px;" role="alertdialog" aria-modal="true" aria-labelledby="syncChoiceTitle">
+    <h4 id="syncChoiceTitle" style="margin:0; color:var(--ink);">Which streaks should we keep?</h4>
+    <p style="font-size:var(--step--1); color:var(--ink-dim); margin:0.4rem 0 0.8rem;">
+      This device and your account have different data. Pick one; the other copy will be replaced.
+    </p>
+    <div style="display:grid; gap:0.6rem;">
+      <div style="background:var(--glass); padding:0.7rem; border-radius:var(--radius); border:1px solid var(--stroke);">
+        <strong style="color:var(--ink);">This device</strong>
+        <div id="syncChoiceLocal" style="font-size:0.8rem; color:var(--ink-dim);"></div>
       </div>
-      <div class="admin-stat-card">
-        <div class="admin-stat-card__val" id="adminTotalSubs">0</div>
-        <div class="admin-stat-card__lbl">Active Subs</div>
+      <div style="background:var(--glass); padding:0.7rem; border-radius:var(--radius); border:1px solid var(--stroke);">
+        <strong style="color:var(--ink);">Your account</strong>
+        <div id="syncChoiceCloud" style="font-size:0.8rem; color:var(--ink-dim);"></div>
       </div>
-      <div class="admin-stat-card">
-        <div class="admin-stat-card__val" id="adminTotalRev">₦0</div>
-        <div class="admin-stat-card__lbl">Gross Rev</div>
-      </div>
-      <div class="admin-stat-card">
-        <div class="admin-stat-card__val" id="adminNetProfit">₦0</div>
-        <div class="admin-stat-card__lbl">Your 50% Profit</div>
-      </div>
-    </div>
-
-    <div style="margin-top:0.5rem;">
-      <h5 style="color:var(--ink-dim); margin-bottom:0.5rem;">Partner Referral Breakdowns</h5>
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Partner Code</th>
-              <th>Visits</th>
-              <th>Active Subs</th>
-              <th>Gross Rev</th>
-              <th>Partner Payout (50%)</th>
-              <th style="text-align:right;">Action</th>
-            </tr>
-          </thead>
-          <tbody id="adminPartnerTableBody">
-            <tr><td colspan="6">No partner traffic logged yet.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div style="margin-top:0.5rem; background:var(--glass); padding:0.8rem; border-radius:var(--radius); border:1px solid var(--stroke);">
-      <h5 style="color:var(--ink-soft); margin-bottom:0.3rem;">Passcode Generator</h5>
-      <div style="display:flex; gap:0.5rem;">
-        <input type="text" id="adminGenKey" class="input-field" readonly placeholder="Generated Code" />
-        <button class="btn btn--primary" id="btnGenPasscode">Generate Passcode</button>
+      <p style="font-size:0.75rem; color:var(--ink-faint); margin:0;">Not sure? Use Export first to save a copy of this device's data.</p>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <button type="button" class="btn btn--primary" id="btnSyncKeepCloud"><span class="btn__glow"></span>Keep account copy</button>
+        <button type="button" class="btn btn--ghost" id="btnSyncKeepLocal">Keep this device's copy</button>
       </div>
     </div>
   </div>

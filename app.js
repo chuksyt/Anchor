@@ -784,6 +784,9 @@ const today = () => key(new Date());
 const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return key(d); };
 const diffDays = (a, b) => Math.round((parse(b) - parse(a)) / dayMs);
 
+/* Escape text before it goes into innerHTML (names, notes, imported data). */
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 /* -- State Initialization (0 selected by default) ------------- */
 function seed() {
   const t = today();
@@ -830,6 +833,10 @@ function load() {
 
   if (!S.tracks) S.tracks = {};
   if (!S.dailyLogs) S.dailyLogs = {};
+  // Hand-edited or partial backups may leave these out.
+  if (!Array.isArray(S.openDays)) S.openDays = [];
+  if (!Array.isArray(S.log)) S.log = [];
+  if (!S.checkins || typeof S.checkins !== 'object') S.checkins = {};
 
   Object.keys(HABIT_LIBRARY).forEach((id) => {
     const meta = HABIT_LIBRARY[id];
@@ -847,6 +854,12 @@ function load() {
   if (!S.user.gender) S.user.gender = 'him';
   if (!Array.isArray(S.user.activeTracks)) S.user.activeTracks = [];
   if (!Array.isArray(S.user.triggers)) S.user.triggers = [];
+  // Ids end up inside HTML attributes, so an imported or synced file must not
+  // be able to smuggle markup in through them.
+  const safeId = (id) => typeof id === 'string' && /^[a-z0-9_-]+$/i.test(id);
+  S.user.activeTracks = S.user.activeTracks.filter(safeId);
+  S.user.triggers = S.user.triggers.filter(safeId);
+  Object.keys(S.tracks).forEach((id) => { if (!safeId(id)) delete S.tracks[id]; });
   if (!S.user.theme) S.user.theme = 'dark';
   if (!Array.isArray(S.seenPerks)) S.seenPerks = [];
   if (typeof S.user.goldThemeUnlocked !== 'boolean') S.user.goldThemeUnlocked = false;
@@ -859,6 +872,7 @@ function load() {
 
 /* === Firebase Realtime Sync Engine ============================ */
 let db = null, auth = null, currentUser = null;
+let syncReady = false;   // true once this device's copy and the account's copy are reconciled
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyD-0T6byubzr4un2DG6uRk2SdnZ_d4zFCA",
@@ -881,10 +895,14 @@ function initFirebase() {
         auth = firebase.auth();
 
         auth.onAuthStateChanged((user) => {
+          // Nothing is pushed to the cloud until the new account's copy has
+          // been reconciled with this device's copy (see syncFromCloud).
+          syncReady = false;
           if (user) {
             currentUser = user;
             syncFromCloud(user.uid);
           } else {
+            currentUser = null;
             auth.signInAnonymously().catch(() => {});
           }
         });
@@ -895,35 +913,88 @@ function initFirebase() {
   }
 }
 
+/* Cloud sync rules
+   - The account has no cloud copy yet       -> upload this device's copy.
+   - This device was never set up            -> take the cloud copy.
+   - Both copies belong to the same account  -> the newer one wins.
+   - This device's data came from a different account (e.g. a guest who then
+     signs in to an existing account) -> ask which copy to keep, never guess. */
+const toMillis = (t) => (t && typeof t.toMillis === 'function') ? t.toMillis() : (Number(t) || 0);
+
 function syncFromCloud(uid) {
   if (!db) return;
   db.collection('users').doc(uid).get().then((doc) => {
-    if (doc.exists) {
-      const remoteState = doc.data()?.state;
-      if (remoteState && remoteState.tracks) {
-        S = { ...seed(), ...remoteState, version: 1 };
-        try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
-        renderAll();
-        if (isTrialEnded() && !S.user?.unlocked) {
-          openSubModal();
-        }
-      }
-    } else {
-      save();
+    if (!currentUser || currentUser.uid !== uid) return;   // account changed meanwhile
+    const remote = doc.exists ? doc.data()?.state : null;
+    if (!remote || !remote.tracks) { keepLocalCopy(uid); return; }
+
+    if (!S.user?.onboarded) { useCloudCopy(remote, uid, doc); return; }
+
+    // Older saves have no syncUid; they were always synced to this same user.
+    const sameAccount = !S.syncUid || S.syncUid === uid;
+    if (sameAccount) {
+      const cloudTime = toMillis(doc.data()?.updatedAt) || toMillis(remote.updatedAt);
+      if (cloudTime > (S.updatedAt || 0)) useCloudCopy(remote, uid, doc);
+      else keepLocalCopy(uid);
+      return;
     }
-  }).catch(() => {});
+    askWhichCopy(remote, uid, doc);
+  }).catch(() => {
+    // Offline or blocked: keep working locally; the next sign-in retries.
+  });
+}
+
+function useCloudCopy(remote, uid, doc) {
+  S = { ...seed(), ...remote, version: 1 };
+  S.syncUid = uid;
+  S.updatedAt = toMillis(doc?.data()?.updatedAt) || toMillis(remote.updatedAt) || Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
+  load();                     // re-run the shape migrations on the cloud copy
+  syncReady = true;
+  renderAll();
+  afterSync();
+}
+
+function keepLocalCopy(uid) {
+  S.syncUid = uid;
+  syncReady = true;
+  save();
+  afterSync();
+}
+
+function afterSync() {
+  refreshEntitlement().then(retryPendingPayments);
+}
+
+function describeCopy(st) {
+  const days = Object.keys(st?.checkins || {}).length;
+  const opens = (st?.openDays || []).length;
+  return `${days} check-in${days === 1 ? '' : 's'}, opened on ${opens} day${opens === 1 ? '' : 's'}`;
+}
+
+function askWhichCopy(remote, uid, doc) {
+  const modal = $('#syncChoiceModal');
+  if (!modal) { useCloudCopy(remote, uid, doc); return; }
+  $('#syncChoiceLocal').textContent = describeCopy(S);
+  $('#syncChoiceCloud').textContent = describeCopy(remote);
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  const done = () => { modal.hidden = true; document.body.style.overflow = ''; };
+  $('#btnSyncKeepCloud').onclick = () => { done(); useCloudCopy(remote, uid, doc); toast('Using the copy saved in your account.'); };
+  $('#btnSyncKeepLocal').onclick = () => { done(); keepLocalCopy(uid); toast("This device's copy is now saved to your account."); };
 }
 
 function save() {
+  S.updatedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch { toast('Could not save — storage issue or private mode.'); }
 
-  if (db && currentUser) {
+  if (db && currentUser && syncReady && S.syncUid === currentUser.uid) {
     try {
       db.collection('users').doc(currentUser.uid).set({
         state: S,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      }, { merge: true }).catch(() => {});
     } catch {}
   }
 }
@@ -1974,7 +2045,7 @@ function renderGreeting() {
   const hr = new Date().getHours();
   const timeWord = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
   const greetingText = name ? `${timeWord}, ${name}. Stay anchored.` : `${timeWord}. Stay anchored.`;
-  greetingEl.innerHTML = `<span class="brand__mark" aria-hidden="true" style="width:8px; height:8px; flex-shrink:0; opacity:0.85;"></span> <span>${greetingText}</span>`;
+  greetingEl.innerHTML = `<span class="brand__mark" aria-hidden="true" style="width:8px; height:8px; flex-shrink:0; opacity:0.85;"></span> <span>${esc(greetingText)}</span>`;
 }
 
 function renderLog() {
@@ -1995,8 +2066,8 @@ function renderLog() {
     });
     li.innerHTML = `
       <span class="log__time">${timeStr}</span>
-      <span class="log__msg">${item.msg}</span>
-      ${item.note ? `<blockquote class="log__note">${item.note}</blockquote>` : ''}
+      <span class="log__msg">${esc(item.msg)}</span>
+      ${item.note ? `<blockquote class="log__note">${esc(item.note)}</blockquote>` : ''}
     `;
     frag.append(li);
   });
@@ -2337,7 +2408,7 @@ function openSettings() {
     }
   } else {
     if (accName) accName.textContent = S.user.name ? `${S.user.name} (Guest)` : 'Guest Mode';
-    if (accEmail) accEmail.textContent = 'Saved on this device only';
+    if (accEmail) accEmail.textContent = 'Backed up anonymously · link an account to use other devices';
     if (accBtn) {
       accBtn.textContent = 'Link Account';
       accBtn.onclick = () => {
@@ -2556,7 +2627,9 @@ function toast(msg) {
 
 /* === 14. Event Bindings ====================================== */
 function bind() {
-  // Brand Click -> 5 rapid clicks triggers Secret Admin Panel!
+  // Brand Click -> 5 rapid clicks opens the admin portal (Google sign-in).
+  let brandClickCount = 0;
+  let brandClickTimer = null;
   const handleBrandClick = () => {
     brandClickCount++;
     if (brandClickTimer) clearTimeout(brandClickTimer);
@@ -2564,7 +2637,7 @@ function bind() {
 
     if (brandClickCount >= 5) {
       brandClickCount = 0;
-      openAdmin();
+      window.location.href = 'admin.html';
       return;
     }
 
@@ -2587,8 +2660,13 @@ function bind() {
   $('#btnPayPaystack')?.addEventListener('click', payWithPaystack);
   $('#btnSubUnlock')?.addEventListener('click', () => {
     const input = $('#subKeyInput');
-    if (input) unlockApp(input.value);
+    if (input) redeemPasscode(input.value);
   });
+  $('#subKeyInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); redeemPasscode(e.target.value); }
+  });
+  $('#btnSubSignIn')?.addEventListener('click', openLinkAccountModal);
+  $('#btnSubExport')?.addEventListener('click', () => $('#btnExport')?.click());
   $$('.curr-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       setCurrency(btn.dataset.currency);
@@ -2596,8 +2674,6 @@ function bind() {
   });
 
   // Admin Modal Handlers
-  $('#btnAdminClose')?.addEventListener('click', closeAdmin);
-  $('#btnGenPasscode')?.addEventListener('click', generatePasscode);
 
   // Partner Portal Modal Handlers
   $('#btnPartnerClose')?.addEventListener('click', closePartnerModal);
@@ -2833,13 +2909,25 @@ function bind() {
     const btn = $('#btnLinkGoogleAuth');
     if (btn) btn.disabled = true;
 
-    auth.signInWithPopup(provider).then((result) => {
+    // A guest is linked (same user id), so their streaks and any paid access
+    // stay attached. If that Google account already exists, sign in to it
+    // instead and let syncFromCloud reconcile the two copies.
+    const attempt = (currentUser && currentUser.isAnonymous)
+      ? currentUser.linkWithPopup(provider).catch((err) => {
+          if (err.code === 'auth/credential-already-in-use' && err.credential) {
+            return auth.signInWithCredential(err.credential);
+          }
+          throw err;
+        })
+      : auth.signInWithPopup(provider);
+
+    attempt.then((result) => {
       const user = result.user;
       currentUser = user;
       if (user.displayName && !S.user.name) {
         S.user.name = user.displayName;
       }
-      save(); // Immediately uploads existing streaks to this user's cloud document
+      if (result.operationType === 'link') save(); // same account: upload right away
       closeLinkAccountModal();
       openSettings();
       toast(`Account linked! Streaks backed up as ${user.displayName || user.email}`);
@@ -2870,17 +2958,21 @@ function bind() {
     const btn = $('#btnSubmitLinkAccount');
     if (btn) btn.disabled = true;
 
-    auth.createUserWithEmailAndPassword(email, password).then((cred) => {
+    const createOrLink = (currentUser && currentUser.isAnonymous)
+      ? currentUser.linkWithCredential(firebase.auth.EmailAuthProvider.credential(email, password))
+      : auth.createUserWithEmailAndPassword(email, password);
+
+    createOrLink.then((cred) => {
       currentUser = cred.user;
-      save(); // Sync existing streaks
+      save(); // same user id as the guest, so this just backs up the streaks
       closeLinkAccountModal();
       openSettings();
       toast(`Account linked! Streaks backed up as ${email}`);
     }).catch((err) => {
-      if (err.code === 'auth/email-already-in-use') {
+      if (err.code === 'auth/email-already-in-use' || err.code === 'auth/credential-already-in-use') {
+        // Existing account: onAuthStateChanged -> syncFromCloud reconciles the copies.
         auth.signInWithEmailAndPassword(email, password).then((cred) => {
           currentUser = cred.user;
-          syncFromCloud(currentUser.uid);
           closeLinkAccountModal();
           openSettings();
           toast(`Signed in & synced as ${email}`);
@@ -3152,12 +3244,27 @@ function bind() {
     r.onload = (ev) => {
       try {
         const incoming = JSON.parse(ev.target.result);
-        if (incoming && incoming.tracks) {
-          S = { ...seed(), ...incoming, version: 1 };
+        // Accept both a raw state file and the {app, schema, state} wrapper.
+        const data = incoming && incoming.state && incoming.state.tracks ? incoming.state : incoming;
+        if (data && data.tracks) {
+          // Paid access is decided by the server, never by a backup file.
+          const keepUser = {
+            unlocked: S.user?.unlocked || false,
+            unlockKey: S.user?.unlockKey || '',
+            unlockExpires: S.user?.unlockExpires || 0
+          };
+          const keepSync = S.syncUid;
+          S = { ...seed(), ...data, version: 1 };
+          S.user = { ...seed().user, ...(data.user || {}), ...keepUser };
+          S.syncUid = keepSync;
+          try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
+          load();               // same validation as a normal start-up
           save();
           renderAll();
           closeWelcomeLanding();
           toast('Data imported successfully!');
+        } else {
+          toast('That file is not an Anchor backup.');
         }
       } catch {
         toast('Invalid backup file.');
@@ -3202,6 +3309,16 @@ function bind() {
     }
   });
   $('#btnConfirmResetData')?.addEventListener('click', () => {
+    // Delete the cloud copy too, then sign out so this device starts fresh
+    // under a new anonymous user. (Paid access in entitlements/ is kept: it
+    // belongs to the account and comes back by signing in again.)
+    const user = currentUser;
+    syncReady = false;
+    if (db && user) {
+      db.collection('users').doc(user.uid).delete()
+        .catch(() => toast('Could not delete the cloud copy. Check your connection and erase again.'))
+        .finally(() => { if (auth) auth.signOut().catch(() => {}); });
+    }
     localStorage.removeItem(KEY);
     S = seed();
     save();
@@ -3242,10 +3359,12 @@ function checkReferral() {
           save();
           return;
         }
-        db.collection('referrals').doc(ref).set({
+        // update(), not set(): only the admin can create partner codes, so a
+        // made-up ?ref= value simply fails instead of creating a new code.
+        db.collection('referrals').doc(ref).update({
           visits: firebase.firestore.FieldValue.increment(1),
           lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        }).catch(() => {});
       }).catch(() => {});
     } catch {}
   }
@@ -3262,13 +3381,34 @@ function checkReferral() {
   }
 }
 
-/* === 14c. Subscription 7-Day Free Trial & Currency System === */
-const PAYSTACK_PUBLIC_KEY = 'pk_test_e903b70f371c2bcb30ec49b9bd845804035e78df';
+/* === 14c. Subscription: 7-Day Free Trial, Paystack & Passcodes ===
+   Paid access is decided by the server, not by this file:
+   - Paystack: the payment reference is sent to the Anchor payment Worker
+     (worker/), which asks Paystack whether it really succeeded and only
+     then writes entitlements/{uid} in Firestore.
+   - WhatsApp: the admin issues a single-use passcode (passcodes/{code});
+     redeeming it is a Firestore batch that the security rules only accept
+     if the code exists and is unused (firestore.rules).
+   The local copy (S.user.unlockExpires) is a cache so the app still opens
+   offline; it is refreshed from entitlements/{uid} whenever we are online. */
 
+// Replace with your pk_live_ key when you switch Paystack to live mode.
+const PAYSTACK_PUBLIC_KEY = 'pk_test_e903b70f371c2bcb30ec49b9bd845804035e78df';
+// URL of the deployed Cloudflare Worker in worker/ (no trailing slash),
+// e.g. 'https://anchor-pay.<your-subdomain>.workers.dev'.
+const PAYMENT_API = '';
+
+const PRICE_KOBO = 200000;               // ₦2,000 — everyone is charged in naira
+const ACCESS_DAYS = 30;
+// Unlocks granted before server checks existed cannot be verified. They keep
+// working until this date, after which a passcode or payment is needed.
+const LEGACY_UNLOCK_GRACE_END = '2026-12-31';
+
+// Shown as a guide only; the card issuer does the real conversion.
 const CURRENCIES = {
-  NGN: { symbol: '₦', amount: '2,000', display: '₦2,000', name: 'NGN' },
-  USD: { symbol: '$', amount: '2.99', display: '$2.99', name: 'USD' },
-  GBP: { symbol: '£', amount: '2.49', display: '£2.49', name: 'GBP' }
+  NGN: { display: '₦2,000', approx: '' },
+  USD: { display: '≈ $1.35', approx: 'Charged as ₦2,000 — your bank converts it (about $1.35).' },
+  GBP: { display: '≈ £1.00', approx: 'Charged as ₦2,000 — your bank converts it (about £1.00).' }
 };
 
 function isTrialEnded() {
@@ -3276,44 +3416,78 @@ function isTrialEnded() {
   return diffDays(start, today()) >= 7;
 }
 
+function hasAccess() {
+  const u = S.user || {};
+  if (u.unlockExpires) return u.unlockExpires > Date.now();
+  return !!u.unlocked && today() <= LEGACY_UNLOCK_GRACE_END;   // legacy unlock
+}
+
+function isLocked() {
+  return isTrialEnded() && !hasAccess();
+}
+
+/* Show or lift the paywall. When locked it cannot be closed; the only ways
+   out are paying, redeeming a passcode, signing in to an account that has
+   access, or exporting your data. */
+function applyLock() {
+  const locked = isLocked();
+  const closeBtn = $('#btnSubClose');
+  if (closeBtn) closeBtn.hidden = locked;
+  if (locked) openSubModal();
+  else if (!$('#subModal')?.hidden) closeSubModal();
+}
+
+function refreshEntitlement() {
+  if (!db || !currentUser) return Promise.resolve();
+  return db.collection('entitlements').doc(currentUser.uid).get().then((doc) => {
+    const exp = doc.exists ? toMillis(doc.data()?.expiresAt) : 0;
+    if (exp) {
+      S.user.unlocked = exp > Date.now();
+      S.user.unlockExpires = exp;
+    } else if (S.user.unlockExpires) {
+      // Had server-granted access on another account; this one has none.
+      S.user.unlocked = false;
+      S.user.unlockExpires = 0;
+    }
+    save();
+    applyLock();
+  }).catch(() => {});
+}
+
 function detectUserCurrency() {
-  if (S.user.currency && CURRENCIES[S.user.currency]) {
-    return S.user.currency;
-  }
+  if (S.user.currency && CURRENCIES[S.user.currency]) return S.user.currency;
   try {
     const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
-    if (tz.includes('lagos') || tz.includes('accra') || tz.includes('nairobi') || tz.includes('cairo') || tz.includes('africa')) {
-      return 'NGN';
-    }
-    if (tz.includes('london') || tz.includes('europe/london') || tz.includes('belfast')) {
-      return 'GBP';
-    }
+    if (tz.startsWith('africa/')) return 'NGN';
+    if (tz === 'europe/london' || tz === 'europe/belfast') return 'GBP';
+    if (tz.startsWith('america/')) return 'USD';
   } catch {}
-  return 'USD';
+  return 'NGN';
 }
 
 function renderSubPrice() {
   const currCode = S.user.currency || detectUserCurrency();
   const c = CURRENCIES[currCode] || CURRENCIES.NGN;
-  
+
   const priceDisplay = $('#subPriceDisplay');
   if (priceDisplay) {
-    priceDisplay.innerHTML = `${c.display} <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span>`;
+    priceDisplay.innerHTML = `${esc(c.display)} <span style="font-size:1rem; font-weight:normal; color:var(--ink-dim);">/ month</span>`;
+  }
+  const approxEl = $('#subPriceApprox');
+  if (approxEl) {
+    approxEl.textContent = c.approx;
+    approxEl.hidden = !c.approx;
   }
 
   const payPaystackText = $('#btnPayPaystackText');
-  if (payPaystackText) {
-    payPaystackText.textContent = `Pay Securely with Card / Transfer (${c.display})`;
-  }
+  if (payPaystackText) payPaystackText.textContent = 'Pay Securely with Card / Transfer (₦2,000)';
 
   const payText = $('#btnPayText');
-  if (payText) {
-    payText.textContent = `Alternative: Pay via WhatsApp (${c.display})`;
-  }
+  if (payText) payText.textContent = 'Alternative: Pay via WhatsApp (₦2,000)';
 
   const name = S.user.name ? encodeURIComponent(S.user.name) : 'User';
   const ref = S.user.referrer ? encodeURIComponent(S.user.referrer) : 'direct';
-  const waUrl = `https://wa.me/2348021184502?text=Hello!%20I%20am%20${name}%20(Ref:%20${ref}).%20I%20want%20to%20get%20my%20Anchor%20Monthly%20Passcode%20(${encodeURIComponent(c.display)})`;
+  const waUrl = `https://wa.me/2348021184502?text=Hello!%20I%20am%20${name}%20(Ref:%20${ref}).%20I%20want%20to%20get%20my%20Anchor%20Monthly%20Passcode%20(%E2%82%A62%2C000)`;
   const payBtn = $('#btnPayWhatsApp');
   if (payBtn) payBtn.href = waUrl;
 
@@ -3325,18 +3499,19 @@ function renderSubPrice() {
   $$('.curr-btn').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.currency === currCode);
   });
+
+  const until = $('#subAccessUntil');
+  if (until) {
+    const exp = S.user.unlockExpires;
+    until.hidden = !(exp && exp > Date.now());
+    if (exp) until.textContent = `Your access runs until ${new Date(exp).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}.`;
+  }
 }
 
 function loadPaystackScript(callback) {
-  if (typeof PaystackPop !== 'undefined') {
-    callback();
-    return;
-  }
+  if (typeof PaystackPop !== 'undefined') { callback(); return; }
   const existing = document.getElementById('paystack-inline-js');
-  if (existing) {
-    existing.addEventListener('load', callback);
-    return;
-  }
+  if (existing) { existing.addEventListener('load', callback); return; }
   const s = document.createElement('script');
   s.id = 'paystack-inline-js';
   s.src = 'https://js.paystack.co/v1/inline.js';
@@ -3345,53 +3520,111 @@ function loadPaystackScript(callback) {
   document.head.appendChild(s);
 }
 
+function randomToken(len, alphabet) {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+}
+
+let payInFlight = false;
 function payWithPaystack() {
+  if (payInFlight) return;
+  if (!PAYMENT_API) {
+    toast('Card payments are not switched on yet. Please use the WhatsApp option.');
+    return;
+  }
+  if (!db || !currentUser) {
+    toast('Connect to the internet to pay, then try again.');
+    return;
+  }
+  const emailInput = $('#subEmailInput');
+  const email = (emailInput?.value || '').trim() || currentUser.email || S.user.email || '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    toast('Enter your email so Paystack can send your receipt.');
+    emailInput?.focus();
+    return;
+  }
+  payInFlight = true;
   loadPaystackScript(() => {
     try {
-      const currCode = S.user.currency || detectUserCurrency();
-      const c = CURRENCIES[currCode] || CURRENCIES.NGN;
-      
-      let amountMinor = 200000; // default 2,000 NGN in kobo
-      if (currCode === 'USD') amountMinor = 299; // $2.99
-      if (currCode === 'GBP') amountMinor = 249; // £2.49
-
-      const emailInput = $('#subEmailInput');
-      const email = (emailInput?.value || '').trim() || S.user.email || currentUser?.email || 'user@anchor-habits.app';
-
       if (typeof PaystackPop === 'undefined') {
         toast('Paystack payment gateway is loading. Please try again.');
+        payInFlight = false;
         return;
       }
-
       const handler = PaystackPop.setup({
         key: PAYSTACK_PUBLIC_KEY,
-        email: email,
-        amount: amountMinor,
-        currency: currCode === 'NGN' ? 'NGN' : 'NGN', // Starter accounts default to NGN settlement
-        ref: 'ANC_' + Math.floor((Math.random() * 1000000000) + 1),
+        email,
+        amount: PRICE_KOBO,
+        currency: 'NGN',
+        ref: 'ANC_' + randomToken(16, 'abcdefghijklmnopqrstuvwxyz0123456789'),
         metadata: {
+          uid: currentUser.uid,              // the Worker checks this matches the payer
+          referrer: S.user.referrer || 'direct',
           custom_fields: [
-            { display_name: "User ID", variable_name: "user_id", value: currentUser?.uid || S.firstRun || 'guest' },
-            { display_name: "Referrer", variable_name: "referrer", value: S.user.referrer || 'direct' },
-            { display_name: "Subscriber Name", variable_name: "subscriber_name", value: S.user.name || 'Anchor User' }
+            { display_name: 'User ID', variable_name: 'user_id', value: currentUser.uid },
+            { display_name: 'Referrer', variable_name: 'referrer', value: S.user.referrer || 'direct' },
+            { display_name: 'Subscriber Name', variable_name: 'subscriber_name', value: S.user.name || 'Anchor User' }
           ]
         },
-        callback: function(response) {
-          const paymentRef = response.reference || 'PAYSTACK-SUCCESS';
-          unlockApp(paymentRef);
-          toast('Payment successful! Full Access Unlocked.');
+        callback: function (response) {
+          payInFlight = false;
+          const reference = response && response.reference;
+          if (!reference) return;
+          if (!Array.isArray(S.pendingPayments)) S.pendingPayments = [];
+          if (!S.pendingPayments.includes(reference)) S.pendingPayments.push(reference);
+          save();
+          toast('Payment received — confirming it with Paystack…');
+          verifyPayment(reference, true);
         },
-        onClose: function() {
+        onClose: function () {
+          payInFlight = false;
           toast('Payment window closed.');
         }
       });
-
       handler.openIframe();
     } catch (err) {
+      payInFlight = false;
       console.error('Paystack Launch Error:', err);
       toast('Payment error: ' + (err.message || 'Could not launch payment window.'));
     }
   });
+}
+
+/* Ask the Worker to confirm a payment. A reference stays in
+   S.pendingPayments until the Worker gives a final answer, so a payment made
+   just before the connection dropped is confirmed on the next start-up. */
+function verifyPayment(reference, loud) {
+  if (!PAYMENT_API || !currentUser) return Promise.resolve();
+  return currentUser.getIdToken()
+    .then((token) => fetch(`${PAYMENT_API}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ reference })
+    }))
+    .then((res) => res.json().catch(() => ({})).then((body) => ({ res, body })))
+    .then(({ res, body }) => {
+      if (res.ok && body.ok) {
+        S.pendingPayments = (S.pendingPayments || []).filter((r) => r !== reference);
+        save();
+        return refreshEntitlement().then(() => toast('Payment confirmed. Full access unlocked!'));
+      }
+      if (body.final) {
+        S.pendingPayments = (S.pendingPayments || []).filter((r) => r !== reference);
+        save();
+        toast(body.error || 'Paystack did not confirm this payment.');
+      } else if (loud) {
+        toast("Couldn't confirm the payment yet. Anchor will retry automatically.");
+      }
+    })
+    .catch(() => {
+      if (loud) toast("Couldn't reach the payment server. Anchor will retry when you're back online.");
+    });
+}
+
+function retryPendingPayments() {
+  const pending = Array.isArray(S.pendingPayments) ? S.pendingPayments.slice() : [];
+  return pending.reduce((p, ref) => p.then(() => verifyPayment(ref, false)), Promise.resolve());
 }
 
 function setCurrency(code) {
@@ -3411,197 +3644,76 @@ function openSubModal() {
 }
 
 function closeSubModal() {
+  if (isLocked()) return;             // the paywall cannot be dismissed while locked
   $('#subModal').hidden = true;
   document.body.style.overflow = '';
+}
+
+function normalizeCode(raw) {
+  let s = (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (s.length === 11 && s.startsWith('ANC')) s = s.slice(3);
+  return s.length === 8 ? `ANC-${s.slice(0, 4)}-${s.slice(4)}` : s;
+}
+
+let redeemInFlight = false;
+function redeemPasscode(raw) {
+  const code = normalizeCode(raw);
+  if (!/^ANC-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) {
+    toast('Passcodes look like ANC-XXXX-XXXX. Check your WhatsApp message.');
+    return;
+  }
+  if (!db || !currentUser) {
+    toast('Connect to the internet to redeem a passcode.');
+    return;
+  }
+  if (redeemInFlight) return;
+  redeemInFlight = true;
+
+  const FV = firebase.firestore.FieldValue;
+  const uid = currentUser.uid;
+  const ref = (S.user.referrer || 'direct').toLowerCase();
+  const refDoc = db.collection('referrals').doc(ref);
+  const entDoc = db.collection('entitlements').doc(uid);
+
+  Promise.all([
+    refDoc.get().then((d) => d.exists, () => false),
+    entDoc.get().then((d) => (d.exists ? toMillis(d.data()?.expiresAt) : 0), () => 0)
+  ]).then(([refExists, currentExp]) => {
+    // Renewing early adds 30 days on top of the time you still have.
+    const expires = Math.max(Date.now(), currentExp) + ACCESS_DAYS * 86400000;
+    const batch = db.batch();
+    batch.update(db.collection('passcodes').doc(code), { used: true, usedBy: uid, usedAt: FV.serverTimestamp() });
+    batch.set(entDoc, {
+      active: true,
+      source: 'passcode',
+      code,
+      referrer: ref,
+      grantedAt: FV.serverTimestamp(),
+      expiresAt: firebase.firestore.Timestamp.fromMillis(expires)
+    });
+    if (refExists) {
+      batch.update(refDoc, { subs: FV.increment(1), lastCode: code, lastUpdated: FV.serverTimestamp() });
+    }
+    return batch.commit().then(() => {
+      S.user.unlocked = true;
+      S.user.unlockKey = code;
+      S.user.unlockExpires = expires;
+      save();
+      const input = $('#subKeyInput');
+      if (input) input.value = '';
+      applyLock();
+      closeSubModal();
+      renderAll();
+      toast('Passcode accepted. Full access unlocked!');
+    });
+  }).catch(() => {
+    toast("That passcode isn't valid or has already been used.");
+  }).finally(() => { redeemInFlight = false; });
 }
 
 window.openSubModal = openSubModal;
 window.closeSubModal = closeSubModal;
 window.isTrialEnded = isTrialEnded;
-window.unlockApp = unlockApp;
-window.payWithPaystack = payWithPaystack;
-
-function unlockApp(key) {
-  const cleanKey = (key || '').toUpperCase().trim();
-  if (cleanKey.length >= 4) {
-    S.user.unlocked = true;
-    S.user.unlockKey = cleanKey;
-    const ref = S.user.referrer || 'direct';
-    if (!S.partners) S.partners = {};
-    if (!S.partners[ref]) S.partners[ref] = { visits: 1, subs: 0 };
-    S.partners[ref].subs = (S.partners[ref].subs || 0) + 1;
-    save();
-
-    if (db) {
-      try {
-        db.collection('referrals').doc(ref.toLowerCase()).set({
-          subs: firebase.firestore.FieldValue.increment(1),
-          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-      } catch {}
-    }
-
-    closeSubModal();
-    toast('Full Access Unlocked!');
-    renderAll();
-    return true;
-  }
-  toast('Invalid passcode. Check your WhatsApp confirmation.');
-  return false;
-}
-
-function checkSubLock(actionCallback) {
-  if (!isTrialEnded() || S.user.unlocked) {
-    actionCallback();
-  } else {
-    openSubModal();
-  }
-}
-
-/* === 14d. Secret Admin Dashboard ============================ */
-function openAdmin() {
-  const pin = (prompt('Enter Admin Master PIN:') || '').trim().toLowerCase();
-  const validPins = ['4397'];
-  if (S.user?.adminPin) validPins.push(String(S.user.adminPin).toLowerCase());
-  
-  if (!validPins.includes(pin)) {
-    toast('Invalid Admin PIN.');
-    return;
-  }
-  $('#adminModal').hidden = false;
-  document.body.style.overflow = 'hidden';
-  renderAdminTable();
-}
-
-function closeAdmin() {
-  $('#adminModal').hidden = true;
-  document.body.style.overflow = '';
-}
-
-function deletePartner(code) {
-  const cleanCode = (code || '').toLowerCase().trim();
-  if (!cleanCode) return;
-  
-  if (cleanCode === 'direct') {
-    toast('Cannot delete default "direct" channel.');
-    return;
-  }
-
-  if (!confirm(`Delete partner code "${cleanCode.toUpperCase()}"? Analytics & payouts for this code will be permanently disabled.`)) {
-    return;
-  }
-
-  if (S.partners && S.partners[cleanCode]) {
-    delete S.partners[cleanCode];
-  }
-
-  if (!Array.isArray(S.deletedPartners)) S.deletedPartners = [];
-  if (!S.deletedPartners.includes(cleanCode)) {
-    S.deletedPartners.push(cleanCode);
-  }
-  save();
-
-  if (db) {
-    try {
-      db.collection('referrals').doc(cleanCode).delete();
-      db.collection('deleted_referrals').doc(cleanCode).set({
-        disabled: true,
-        deletedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    } catch (e) {}
-  }
-
-  toast(`Partner code "${cleanCode.toUpperCase()}" deleted.`);
-  updateAdminUI();
-}
-
-function renderAdminTable() {
-  if (!S.partners) S.partners = { direct: { visits: 1, subs: 0 } };
-  
-  if (db) {
-    try {
-      db.collection('referrals').onSnapshot((snapshot) => {
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          const code = doc.id;
-          if (S.deletedPartners && S.deletedPartners.includes(code)) return;
-          if (!S.partners[code]) S.partners[code] = { visits: 0, subs: 0 };
-          if (data.visits) S.partners[code].visits = data.visits;
-          if (data.subs) S.partners[code].subs = data.subs;
-        });
-        updateAdminUI();
-      }, () => updateAdminUI());
-    } catch {
-      updateAdminUI();
-    }
-  } else {
-    updateAdminUI();
-  }
-}
-
-function updateAdminUI() {
-  let totalVisits = 0, totalSubs = 0;
-  if (S.partners) {
-    Object.entries(S.partners).forEach(([code, p]) => {
-      if (S.deletedPartners && S.deletedPartners.includes(code)) return;
-      totalVisits += p.visits || 0;
-      totalSubs += p.subs || 0;
-    });
-  }
-
-  const grossRev = totalSubs * 2000;
-  const netProfit = grossRev * 0.5;
-
-  if ($('#adminTotalVisits')) $('#adminTotalVisits').textContent = String(totalVisits);
-  if ($('#adminTotalSubs')) $('#adminTotalSubs').textContent = String(totalSubs);
-  if ($('#adminTotalRev')) $('#adminTotalRev').textContent = `₦${grossRev.toLocaleString()}`;
-  if ($('#adminNetProfit')) $('#adminNetProfit').textContent = `₦${netProfit.toLocaleString()}`;
-
-  const tbody = $('#adminPartnerTableBody');
-  if (!tbody) return;
-
-  const validEntries = Object.entries(S.partners || {}).filter(([code]) => {
-    return !S.deletedPartners || !S.deletedPartners.includes(code);
-  });
-
-  const rows = validEntries.map(([code, p]) => {
-    const pRev = (p.subs || 0) * 2000;
-    const pPayout = pRev * 0.5;
-    const deleteBtn = code !== 'direct'
-      ? `<button class="btn-delete-partner" data-delete-partner="${code}" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); color:#f87171; cursor:pointer; font-size:0.75rem; padding:0.25rem 0.5rem; border-radius:var(--radius); font-weight:600;" title="Delete Partner Code">Delete</button>`
-      : `<span style="color:var(--ink-faint); font-size:0.75rem;">Default</span>`;
-    return `
-      <tr>
-        <td><strong>${code.toUpperCase()}</strong></td>
-        <td>${p.visits || 0}</td>
-        <td>${p.subs || 0}</td>
-        <td>₦${pRev.toLocaleString()}</td>
-        <td>₦${pPayout.toLocaleString()}</td>
-        <td style="text-align:right;">${deleteBtn}</td>
-      </tr>
-    `;
-  });
-
-  tbody.innerHTML = rows.join('') || '<tr><td colspan="6">No partner traffic logged yet.</td></tr>';
-
-  $$('.btn-delete-partner').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const code = e.currentTarget.dataset.deletePartner;
-      deletePartner(code);
-    });
-  });
-}
-
-function generatePasscode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = 'ANC-';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  const field = $('#adminGenKey');
-  if (field) field.value = code;
-  toast(`Passcode generated: ${code}`);
-}
 
 /* === 14e. Dedicated Partner Portal Controller =============== */
 let currentPartnerCode = '';
@@ -3770,10 +3882,8 @@ startReveal();
 registerSW();
 initWaveCanvas();
 
-// Check 7-Day Subscription Free Trial
-if (isTrialEnded() && !S.user?.unlocked) {
-  openSubModal();
-}
+// Check 7-Day Subscription Free Trial (refreshed again once cloud sync runs)
+applyLock();
 
 // Show Welcome Landing if user is not onboarded
 if (!S.user.onboarded) {

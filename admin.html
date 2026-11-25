@@ -200,7 +200,10 @@
 <canvas id="field" aria-hidden="true"></canvas>
 <div class="grain" aria-hidden="true"></div>
 
-<!-- ── 1. Admin PIN Security Gate ──────────────────────────────── -->
+<!-- ── 1. Admin Sign-in Gate ─────────────────────────────────────
+     Access is decided by Firestore: only users with a document at
+     admins/{uid} can read partner data or issue passcodes (firestore.rules).
+     Nothing secret lives in this page. ─────────────────────────────── -->
 <div id="adminAuthGate" class="admin-page-wrap">
   <div class="auth-gate-card">
     <div style="display:flex; justify-content:center; margin-bottom: 0.8rem;">
@@ -208,27 +211,31 @@
     </div>
     <h2 style="margin: 0 0 0.4rem; font-size: 1.3rem; color: var(--ink);">Anchor Master Admin</h2>
     <p style="font-size: 0.82rem; color: var(--ink-dim); margin-bottom: 1.5rem;">
-      Enter the Master Security PIN to access the affiliate partner analytics and passcode dashboard.
+      Sign in with your admin Google account to view partner analytics and issue passcodes.
     </p>
 
-    <form id="adminPinForm" onsubmit="return false;" style="display:grid; gap:0.8rem; text-align:left;">
-      <div>
-        <label for="adminPinInput" style="font-size:0.78rem; font-weight:600; color:var(--ink-dim); display:block; margin-bottom:0.35rem;">
-          Master PIN
-        </label>
-        <input type="password" id="adminPinInput" class="input-field" placeholder="Enter PIN" autofocus required />
+    <div style="display:grid; gap:0.8rem; text-align:left;">
+      <div id="adminGateMsg" style="color:#f87171; font-size:0.78rem; text-align:center;" hidden></div>
+
+      <div id="adminNotAllowed" hidden style="background:var(--glass); border:1px solid var(--stroke); border-radius:var(--radius); padding:0.8rem; font-size:0.78rem; color:var(--ink-dim);">
+        This account is not an admin. To make it one, open the Firebase console →
+        Firestore → create a document in the <code>admins</code> collection whose
+        ID is this user ID (fields don't matter):
+        <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
+          <input type="text" id="adminUidField" class="input-field" readonly style="font-size:0.78rem;" />
+          <button type="button" class="btn btn--ghost" id="btnCopyUid" style="padding:0.4rem 0.8rem;">Copy</button>
+        </div>
       </div>
 
-      <div id="pinErrorMsg" style="color:#f87171; font-size:0.78rem; text-align:center;" hidden></div>
-
-      <button type="submit" class="btn btn--primary" id="btnSubmitPin" style="margin-top:0.4rem; width:100%;">
-        <span class="btn__glow"></span>Unlock Admin Portal ➔
+      <button type="button" class="btn btn--primary" id="btnAdminGoogle" style="margin-top:0.4rem; width:100%;">
+        <span class="btn__glow"></span>Sign in with Google ➔
       </button>
+      <button type="button" class="btn btn--ghost" id="btnAdminSwitch" hidden style="width:100%;">Use a different account</button>
 
       <div style="text-align:center; margin-top:0.8rem;">
         <a href="index.html" style="font-size:0.8rem; color:var(--ink-dim); text-decoration:none;">← Return to Anchor App</a>
       </div>
-    </form>
+    </div>
   </div>
 </div>
 
@@ -243,7 +250,7 @@
         <h1 style="font-size:1.25rem; font-weight:800; margin:0; color:var(--ink); letter-spacing:-0.01em;">
           Anchor Admin Portal
         </h1>
-        <span style="font-size:0.75rem; color:var(--ink-dim);">Revenue, Partner Traffic & Passcodes</span>
+        <span style="font-size:0.75rem; color:var(--ink-dim);">Signed in as <span id="adminWho"></span></span>
       </div>
     </div>
 
@@ -278,7 +285,7 @@
         Active Paying Subs
       </span>
       <span class="admin-kpi-val" id="kpiSubs" style="color:#10b981;">0</span>
-      <span style="font-size:0.74rem; color:var(--ink-faint);">Unlocked memberships</span>
+      <span style="font-size:0.74rem; color:var(--ink-faint);">Access not yet expired</span>
     </div>
 
     <div class="admin-kpi-card">
@@ -287,7 +294,7 @@
         Gross Revenue
       </span>
       <span class="admin-kpi-val" id="kpiGrossRev">₦0</span>
-      <span style="font-size:0.74rem; color:var(--ink-faint);">₦2,000 / monthly sub</span>
+      <span style="font-size:0.74rem; color:var(--ink-faint);">Active subs × ₦2,000 / month</span>
     </div>
 
     <div class="admin-kpi-card">
@@ -316,7 +323,7 @@
           <tr>
             <th>Partner Code</th>
             <th>Visits</th>
-            <th>Active Subs</th>
+            <th>Subs (all-time)</th>
             <th>Conv. Rate</th>
             <th>Gross Rev</th>
             <th>Partner Payout (50%)</th>
@@ -369,9 +376,12 @@
           <span class="passcode-display" id="passcodeDisplay">ANC-READY</span>
           <button type="button" class="btn btn--ghost" id="btnCopyPasscode" style="padding:0.4rem 0.8rem; font-size:0.8rem;">Copy</button>
         </div>
+        <input type="text" id="passcodeNoteInput" class="input-field" maxlength="80" placeholder="Note, e.g. who paid (optional)" />
         <button type="button" class="btn btn--primary" id="btnGeneratePasscode">
           <span class="btn__glow"></span>Generate New Passcode
         </button>
+        <p style="font-size:0.74rem; color:var(--ink-faint); margin:0;">Each code works once and gives 30 days of access.</p>
+        <ul id="passcodeList" style="list-style:none; margin:0; padding:0; font-size:0.78rem; max-height:240px; overflow:auto;"></ul>
       </div>
     </div>
 
@@ -384,16 +394,18 @@
 
 <script>
 (() => {
-  const VALID_PINS = ['4397'];
-  const STORAGE_KEY = 'anchor_admin_auth';
+  const PRICE_NAIRA = 2000;
+  const PARTNER_SHARE = 0.5;
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const toMillis = (t) => (t && typeof t.toMillis === 'function') ? t.toMillis() : (Number(t) || 0);
 
-  let partnersData = {
-    direct: { visits: 1, subs: 0 }
-  };
+  let partnersData = {};
   let deletedPartners = [];
+  let entitlements = [];
+  let unsubscribers = [];
 
   // Toast Helper
   let toastTimer = null;
@@ -406,8 +418,11 @@
     toastTimer = setTimeout(() => el.classList.remove('is-visible'), 3200);
   }
 
-  // Firebase Setup
-  let db = null;
+  function copy(text, msg) {
+    navigator.clipboard.writeText(text).then(() => toast(msg)).catch(() => toast('Copy failed — select the text and copy it manually.'));
+  }
+
+  // Firebase Setup (this config is public by design; access is enforced by firestore.rules)
   const FIREBASE_CONFIG = {
     apiKey: "AIzaSyD-0T6byubzr4un2DG6uRk2SdnZ_d4zFCA",
     authDomain: "anchor-c0d11.firebaseapp.com",
@@ -418,122 +433,115 @@
     measurementId: "G-S9E978L2X3"
   };
 
-  function initFirebase() {
-    try {
-      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
-      }
-      if (typeof firebase !== 'undefined' && firebase.apps.length) {
-        db = firebase.firestore();
-      }
-    } catch (e) {
-      console.warn('Firebase init error:', e);
-    }
+  if (typeof firebase === 'undefined') {
+    const m = $('#adminGateMsg');
+    m.textContent = 'Could not load Firebase. Check your internet connection and reload.';
+    m.hidden = false;
+    return;
   }
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.firestore();
+  const auth = firebase.auth();
+  const FV = firebase.firestore.FieldValue;
 
-  // Auth Gate
-  function checkAuth() {
-    if (sessionStorage.getItem(STORAGE_KEY) === 'true') {
-      unlockDashboard();
-    }
-  }
-
-  function unlockDashboard() {
-    sessionStorage.setItem(STORAGE_KEY, 'true');
-    $('#adminAuthGate').hidden = true;
-    $('#adminDashboard').hidden = false;
-    initFirebase();
-    listenToPartnerMetrics();
-  }
-
-  function logout() {
-    sessionStorage.removeItem(STORAGE_KEY);
+  // ── Auth Gate ──────────────────────────────────────────────────
+  function showGate(msg) {
+    unsubscribers.forEach((u) => u());
+    unsubscribers = [];
     $('#adminAuthGate').hidden = false;
     $('#adminDashboard').hidden = true;
-    $('#adminPinInput').value = '';
-    $('#pinErrorMsg').hidden = true;
+    const m = $('#adminGateMsg');
+    m.textContent = msg || '';
+    m.hidden = !msg;
   }
 
-  $('#adminPinForm')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const pin = ($('#adminPinInput')?.value || '').trim().toLowerCase();
-    if (VALID_PINS.includes(pin)) {
-      $('#pinErrorMsg').hidden = true;
-      unlockDashboard();
-      toast('Welcome to Anchor Admin!');
-    } else {
-      const err = $('#pinErrorMsg');
-      if (err) {
-        err.textContent = 'Invalid Master PIN. Please try again.';
-        err.hidden = false;
+  auth.onAuthStateChanged((user) => {
+    $('#adminNotAllowed').hidden = true;
+    $('#btnAdminSwitch').hidden = true;
+    if (!user || user.isAnonymous) { showGate(); return; }
+
+    db.collection('admins').doc(user.uid).get().then((doc) => {
+      if (!doc.exists) {
+        showGate();
+        $('#adminUidField').value = user.uid;
+        $('#adminNotAllowed').hidden = false;
+        $('#btnAdminSwitch').hidden = false;
+        return;
       }
-      $('#adminPinInput').select();
-    }
+      $('#adminAuthGate').hidden = true;
+      $('#adminDashboard').hidden = false;
+      $('#adminWho').textContent = user.email || user.displayName || 'Admin';
+      listenToMetrics();
+    }).catch((err) => {
+      showGate('Could not check admin access: ' + (err.message || err.code));
+    });
   });
 
-  $('#btnAdminLogout')?.addEventListener('click', logout);
+  const googleSignIn = () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    auth.signInWithPopup(provider).catch((err) => {
+      if (err.code !== 'auth/popup-closed-by-user') showGate(err.message || 'Sign-in failed.');
+    });
+  };
+  $('#btnAdminGoogle')?.addEventListener('click', googleSignIn);
+  $('#btnAdminSwitch')?.addEventListener('click', () => auth.signOut().then(googleSignIn));
+  $('#btnCopyUid')?.addEventListener('click', () => copy($('#adminUidField').value, 'User ID copied.'));
+  $('#btnAdminLogout')?.addEventListener('click', () => auth.signOut());
 
-  // Firestore Sync & Metrics Rendering
-  function listenToPartnerMetrics() {
-    try {
-      const localState = JSON.parse(localStorage.getItem('anchor_v1') || '{}');
-      if (localState.partners) partnersData = { ...partnersData, ...localState.partners };
-      if (Array.isArray(localState.deletedPartners)) deletedPartners = localState.deletedPartners;
-    } catch {}
+  // ── Firestore listeners ────────────────────────────────────────
+  function listenToMetrics() {
+    unsubscribers.forEach((u) => u());
+    const onErr = (what) => (err) => {
+      console.warn(what, err);
+      $('#cloudStatusText').textContent = 'Sync error — check firestore.rules';
+    };
 
-    if (db) {
+    unsubscribers = [
       db.collection('deleted_referrals').onSnapshot((snap) => {
-        snap.forEach((doc) => {
-          if (!deletedPartners.includes(doc.id)) deletedPartners.push(doc.id);
-        });
+        deletedPartners = snap.docs.map((d) => d.id);
         renderDashboardUI();
-      }, () => {});
+      }, onErr('deleted_referrals')),
 
       db.collection('referrals').onSnapshot((snap) => {
+        partnersData = {};
         snap.forEach((doc) => {
-          const code = doc.id.toLowerCase();
           const d = doc.data();
-          if (deletedPartners.includes(code)) return;
-          if (!partnersData[code]) partnersData[code] = { visits: 0, subs: 0 };
-          if (typeof d.visits === 'number') partnersData[code].visits = d.visits;
-          if (typeof d.subs === 'number') partnersData[code].subs = d.subs;
+          partnersData[doc.id.toLowerCase()] = { visits: d.visits || 0, subs: d.subs || 0 };
         });
         renderDashboardUI();
-      }, (err) => {
-        console.warn('Firestore listen err:', err);
+      }, onErr('referrals')),
+
+      db.collection('entitlements').onSnapshot((snap) => {
+        entitlements = snap.docs.map((d) => d.data());
         renderDashboardUI();
-      });
-    } else {
-      renderDashboardUI();
-    }
+      }, onErr('entitlements')),
+
+      db.collection('passcodes').orderBy('createdAt', 'desc').limit(15).onSnapshot((snap) => {
+        renderPasscodes(snap.docs.map((d) => ({ code: d.id, ...d.data() })));
+      }, onErr('passcodes'))
+    ];
   }
 
   function renderDashboardUI() {
-    let totalVisits = 0;
-    let totalSubs = 0;
+    const now = Date.now();
+    const active = entitlements.filter((e) => toMillis(e.expiresAt) > now);
+    const referred = active.filter((e) => e.referrer && e.referrer !== 'direct').length;
+    const grossRev = active.length * PRICE_NAIRA;
+    const netProfit = grossRev - referred * PRICE_NAIRA * PARTNER_SHARE;
 
-    const searchTerm = ($('#partnerSearchInput')?.value || '').toLowerCase().trim();
-
-    const validEntries = Object.entries(partnersData).filter(([code]) => {
-      return !deletedPartners.includes(code);
-    });
-
-    validEntries.forEach(([code, p]) => {
-      totalVisits += (p.visits || 0);
-      totalSubs += (p.subs || 0);
-    });
-
-    const grossRev = totalSubs * 2000;
-    const netProfit = grossRev * 0.5;
+    const validEntries = Object.entries(partnersData).filter(([code]) => !deletedPartners.includes(code));
+    const totalVisits = validEntries.reduce((n, [, p]) => n + (p.visits || 0), 0);
 
     $('#kpiVisits').textContent = totalVisits.toLocaleString();
-    $('#kpiSubs').textContent = totalSubs.toLocaleString();
+    $('#kpiSubs').textContent = active.length.toLocaleString();
     $('#kpiGrossRev').textContent = `₦${grossRev.toLocaleString()}`;
     $('#kpiNetProfit').textContent = `₦${netProfit.toLocaleString()}`;
 
     const tbody = $('#adminPartnerRows');
     if (!tbody) return;
 
+    const searchTerm = ($('#partnerSearchInput')?.value || '').toLowerCase().trim();
     const filtered = validEntries.filter(([code]) => !searchTerm || code.includes(searchTerm));
 
     if (filtered.length === 0) {
@@ -541,28 +549,30 @@
       return;
     }
 
+    const appUrl = new URL('index.html', window.location.href);
     const rows = filtered.map(([code, p]) => {
       const visits = p.visits || 0;
       const subs = p.subs || 0;
       const convRate = visits > 0 ? ((subs / visits) * 100).toFixed(1) + '%' : '0.0%';
-      const rev = subs * 2000;
-      const payout = rev * 0.5;
-      const link = `${window.location.origin}/?ref=${code}`;
+      const rev = subs * PRICE_NAIRA;
+      const payout = rev * PARTNER_SHARE;
+      appUrl.search = `?ref=${encodeURIComponent(code)}`;
+      const link = appUrl.toString();
 
       const deleteBtn = code !== 'direct'
-        ? `<button type="button" class="btn-delete" data-del="${code}" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); color:#f87171; cursor:pointer; font-size:0.75rem; padding:0.25rem 0.6rem; border-radius:6px; font-weight:600;">Delete</button>`
+        ? `<button type="button" class="btn-delete" data-del="${esc(code)}" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3); color:#f87171; cursor:pointer; font-size:0.75rem; padding:0.25rem 0.6rem; border-radius:6px; font-weight:600;">Delete</button>`
         : `<span style="color:var(--ink-faint); font-size:0.75rem;">Default</span>`;
 
       return `
         <tr>
-          <td><span class="badge-code">${code.toUpperCase()}</span></td>
+          <td><span class="badge-code">${esc(code.toUpperCase())}</span></td>
           <td><strong>${visits.toLocaleString()}</strong></td>
           <td><strong style="color:#10b981;">${subs.toLocaleString()}</strong></td>
           <td><span style="color:var(--ink-dim);">${convRate}</span></td>
           <td>₦${rev.toLocaleString()}</td>
           <td><strong style="color:#38bdf8;">₦${payout.toLocaleString()}</strong></td>
           <td>
-            <button type="button" class="btn-copy-link" data-link="${link}" style="background:var(--glass); border:1px solid var(--stroke); color:var(--cyan); padding:0.2rem 0.5rem; font-size:0.74rem; border-radius:4px; cursor:pointer;">Copy Link</button>
+            <button type="button" class="btn-copy-link" data-link="${esc(link)}" style="background:var(--glass); border:1px solid var(--stroke); color:var(--cyan); padding:0.2rem 0.5rem; font-size:0.74rem; border-radius:4px; cursor:pointer;">Copy Link</button>
           </td>
           <td style="text-align:right;">${deleteBtn}</td>
         </tr>
@@ -571,52 +581,22 @@
 
     tbody.innerHTML = rows.join('');
 
-    $$('.btn-delete').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const code = btn.dataset.del;
-        deletePartner(code);
-      });
-    });
-
-    $$('.btn-copy-link').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const url = btn.dataset.link;
-        navigator.clipboard.writeText(url).then(() => toast('Partner link copied!')).catch(() => {
-          toast('Partner link copied!');
-        });
-      });
-    });
+    $$('.btn-delete').forEach((btn) => btn.addEventListener('click', () => deletePartner(btn.dataset.del)));
+    $$('.btn-copy-link').forEach((btn) => btn.addEventListener('click', () => copy(btn.dataset.link, 'Partner link copied!')));
   }
 
   $('#partnerSearchInput')?.addEventListener('input', renderDashboardUI);
 
   function deletePartner(code) {
-    if (code === 'direct') return;
+    if (!code || code === 'direct') return;
     if (!confirm(`Permanently delete partner code "${code.toUpperCase()}"? Traffic & payouts for this code will be deactivated.`)) return;
 
-    if (partnersData[code]) delete partnersData[code];
-    if (!deletedPartners.includes(code)) deletedPartners.push(code);
-
-    try {
-      const localState = JSON.parse(localStorage.getItem('anchor_v1') || '{}');
-      if (localState.partners) delete localState.partners[code];
-      if (!Array.isArray(localState.deletedPartners)) localState.deletedPartners = [];
-      if (!localState.deletedPartners.includes(code)) localState.deletedPartners.push(code);
-      localStorage.setItem('anchor_v1', JSON.stringify(localState));
-    } catch {}
-
-    if (db) {
-      try {
-        db.collection('referrals').doc(code).delete();
-        db.collection('deleted_referrals').doc(code).set({
-          disabled: true,
-          deletedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      } catch {}
-    }
-
-    toast(`Partner code "${code.toUpperCase()}" deleted.`);
-    renderDashboardUI();
+    const batch = db.batch();
+    batch.delete(db.collection('referrals').doc(code));
+    batch.set(db.collection('deleted_referrals').doc(code), { disabled: true, deletedAt: FV.serverTimestamp() });
+    batch.commit()
+      .then(() => toast(`Partner code "${code.toUpperCase()}" deleted.`))
+      .catch((err) => toast('Delete failed: ' + (err.message || err.code)));
   }
 
   $('#createPartnerForm')?.addEventListener('submit', (e) => {
@@ -625,50 +605,71 @@
     const raw = (input?.value || '').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
     if (!raw) return;
 
-    if (!partnersData[raw]) {
-      partnersData[raw] = { visits: 0, subs: 0 };
-    }
-    deletedPartners = deletedPartners.filter((c) => c !== raw);
-
-    if (db) {
-      db.collection('referrals').doc(raw).set({
-        visits: 0,
-        subs: 0,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    }
-
-    input.value = '';
-    toast(`Partner code "${raw.toUpperCase()}" registered!`);
-    renderDashboardUI();
+    const ref = db.collection('referrals').doc(raw);
+    ref.get().then((doc) => {
+      if (doc.exists) { toast(`Partner code "${raw.toUpperCase()}" already exists.`); return; }
+      const batch = db.batch();
+      batch.set(ref, { visits: 0, subs: 0, createdAt: FV.serverTimestamp() });
+      batch.delete(db.collection('deleted_referrals').doc(raw));   // re-activating a deleted code
+      return batch.commit().then(() => {
+        input.value = '';
+        toast(`Partner code "${raw.toUpperCase()}" registered!`);
+      });
+    }).catch((err) => toast('Could not register code: ' + (err.message || err.code)));
   });
 
+  // ── Passcodes ─────────────────────────────────────────────────
+  // ANC-XXXX-XXXX from a 32-letter alphabet without look-alikes (0/O, 1/I):
+  // about 10^12 combinations, generated with the browser's secure RNG.
   function generatePasscode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = 'ANC-';
-    for (let i = 0; i < 4; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    const display = $('#passcodeDisplay');
-    if (display) display.textContent = code;
-    return code;
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    const s = Array.from(bytes, (b) => chars[b % chars.length]).join('');
+    return `ANC-${s.slice(0, 4)}-${s.slice(4)}`;
   }
 
   $('#btnGeneratePasscode')?.addEventListener('click', () => {
     const code = generatePasscode();
-    toast(`Generated passcode: ${code}`);
+    const note = ($('#passcodeNoteInput')?.value || '').trim().slice(0, 80);
+    db.collection('passcodes').doc(code).set({
+      used: false,
+      note,
+      createdAt: FV.serverTimestamp(),
+      createdBy: auth.currentUser.uid
+    }).then(() => {
+      $('#passcodeDisplay').textContent = code;
+      if ($('#passcodeNoteInput')) $('#passcodeNoteInput').value = '';
+      toast(`Passcode ${code} issued. It works once, for 30 days of access.`);
+    }).catch((err) => toast('Could not issue passcode: ' + (err.message || err.code)));
   });
 
   $('#btnCopyPasscode')?.addEventListener('click', () => {
     const code = $('#passcodeDisplay')?.textContent || '';
-    if (code) {
-      navigator.clipboard.writeText(code).then(() => toast(`Copied passcode: ${code}`)).catch(() => {
-        toast(`Copied passcode: ${code}`);
-      });
-    }
+    if (/^ANC-/.test(code) && code !== 'ANC-READY') copy(code, `Copied passcode: ${code}`);
   });
 
+  function renderPasscodes(list) {
+    const ul = $('#passcodeList');
+    if (!ul) return;
+    if (!list.length) {
+      ul.innerHTML = '<li style="color:var(--ink-faint);">No passcodes issued yet.</li>';
+      return;
+    }
+    ul.innerHTML = list.map((p) => {
+      const when = toMillis(p.createdAt) ? new Date(toMillis(p.createdAt)).toLocaleDateString() : '';
+      const status = p.used
+        ? `<span style="color:var(--ink-faint);">used${toMillis(p.usedAt) ? ' ' + new Date(toMillis(p.usedAt)).toLocaleDateString() : ''}</span>`
+        : '<span style="color:#10b981;">unused</span>';
+      return `<li style="display:flex; justify-content:space-between; gap:0.5rem; padding:0.3rem 0; border-bottom:1px solid var(--stroke);">
+        <span><code>${esc(p.code)}</code>${p.note ? ` <span style="color:var(--ink-dim);">— ${esc(p.note)}</span>` : ''}</span>
+        <span style="white-space:nowrap;">${status} <span style="color:var(--ink-faint);">${esc(when)}</span></span>
+      </li>`;
+    }).join('');
+  }
+
   function startField() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const c = document.getElementById('field');
     if (!c) return;
     const ctx = c.getContext('2d');
@@ -697,7 +698,6 @@
     resize(); frame();
   }
 
-  checkAuth();
   startField();
 })();
 </script>

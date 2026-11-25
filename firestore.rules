@@ -1,0 +1,104 @@
+rules_version = '2';
+
+// Anchor — Firestore security rules.
+// Deploy with:  firebase deploy --only firestore:rules
+//
+// Collections
+//   users/{uid}             one person's synced habit data (private to them)
+//   entitlements/{uid}      paid access: { expiresAt, source, referrer, ... }
+//   passcodes/{code}        single-use WhatsApp passcodes issued by the admin
+//   referrals/{code}        partner visit / subscription counters
+//   deleted_referrals/{code} partner codes the admin has switched off
+//   payments/{reference}    Paystack references already used (Worker only)
+//   admins/{uid}            who may use admin.html — create these by hand
+//                           in the Firebase console; no client can write them
+//
+// The payment Worker uses a service account, which bypasses these rules.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function passcode(code) { return /databases/$(database)/documents/passcodes/$(code); }
+    function entitlement(uid) { return /databases/$(database)/documents/entitlements/$(uid); }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    // A passcode is being redeemed by the caller in this same batch:
+    // it was unused before the write and is marked as theirs after it.
+    function redeeming(code) {
+      return code is string
+        && exists(passcode(code))
+        && get(passcode(code)).data.used == false
+        && getAfter(passcode(code)).data.usedBy == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read, write: if isSelf(uid);
+    }
+
+    match /admins/{uid} {
+      allow get: if isSelf(uid);
+      allow list, write: if false;
+    }
+
+    match /entitlements/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if isAdmin();
+
+      // A user can grant themselves at most 31 days (on top of time they
+      // still have), and only while redeeming an unused passcode.
+      allow create, update: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(['active', 'source', 'code', 'referrer', 'grantedAt', 'expiresAt'])
+        && request.resource.data.source == 'passcode'
+        && request.resource.data.grantedAt == request.time
+        && request.resource.data.expiresAt is timestamp
+        && (
+          request.resource.data.expiresAt <= request.time + duration.value(31, 'd')
+          || (resource != null
+              && resource.data.expiresAt is timestamp
+              && request.resource.data.expiresAt <= resource.data.expiresAt + duration.value(31, 'd'))
+        )
+        && redeeming(request.resource.data.code);
+    }
+
+    match /passcodes/{code} {
+      allow read, create, delete: if isAdmin();
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.used == false
+        && changed().hasOnly(['used', 'usedBy', 'usedAt'])
+        && request.resource.data.used == true
+        && request.resource.data.usedBy == request.auth.uid
+        && request.resource.data.usedAt == request.time
+        && existsAfter(entitlement(request.auth.uid))
+        && getAfter(entitlement(request.auth.uid)).data.code == code);
+    }
+
+    match /referrals/{code} {
+      allow get: if true;                    // partner portal looks up its own code
+      allow list, create, delete: if isAdmin();
+      allow update: if isAdmin() || (signedIn() && (
+        // a visit through a partner link
+        (changed().hasOnly(['visits', 'lastUpdated'])
+          && request.resource.data.visits == resource.data.get('visits', 0) + 1)
+        ||
+        // a subscription, only alongside a real passcode redemption
+        (changed().hasOnly(['subs', 'lastCode', 'lastUpdated'])
+          && request.resource.data.subs == resource.data.get('subs', 0) + 1
+          && redeeming(request.resource.data.lastCode))
+      ));
+    }
+
+    match /deleted_referrals/{code} {
+      allow get: if true;                    // the app checks whether its ?ref= is disabled
+      allow list, write: if isAdmin();
+    }
+
+    match /payments/{reference} {
+      allow read, write: if false;           // Worker only
+    }
+  }
+}

@@ -1,0 +1,17 @@
+name = "anchor-pay"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "anchor-c0d11"
+# Public web API key (same one the app ships with); used only to check ID tokens.
+FIREBASE_API_KEY = "AIzaSyD-0T6byubzr4un2DG6uRk2SdnZ_d4zFCA"
+# Comma-separated origins allowed to call the Worker. Put the address the app
+# is served from first, e.g. "https://anchor.example.com,http://localhost:8777".
+ALLOWED_ORIGINS = "http://localhost:8777"
+PRICE_KOBO = "200000"
+ACCESS_DAYS = "30"
+
+# Secrets — set these once, never commit them:
+#   npx wrangler secret put PAYSTACK_SECRET_KEY    (sk_test_... or sk_live_...)
+#   npx wrangler secret put GCP_SERVICE_ACCOUNT    (paste the whole service-account JSON)
